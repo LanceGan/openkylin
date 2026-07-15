@@ -30,6 +30,8 @@ def ssh_snapshot_command(target: str, run_id: UUID) -> list[str]:
         "ssh",
         "-o",
         "BatchMode=yes",
+        "-o",
+        "ConnectTimeout=15",
         target,
         "sudo",
         "/usr/local/sbin/kbl-capture-run",
@@ -42,6 +44,8 @@ def scp_command(target: str, run_id: UUID, incoming_root: Path) -> list[str]:
         "scp",
         "-o",
         "BatchMode=yes",
+        "-o",
+        "ConnectTimeout=15",
         "-r",
         f"{target}:/var/lib/kylinbootlab/runs/{run_id}",
         str(incoming_root),
@@ -64,7 +68,10 @@ def collect_target_run(
     snapshot = runner.run(ssh_snapshot_command(target, run_id))
     copied = runner.run(scp_command(target, run_id, incoming_root))
     if copied.returncode != 0:
-        raise RemoteCollectionError(f"scp failed: {copied.stderr.strip()}")
+        detail = copied.stderr.strip()
+        if snapshot.returncode != 0:
+            detail = f"scp failed (snapshot exited {snapshot.returncode}): {detail}\nsnapshot stderr: {snapshot.stderr.strip()}"
+        raise RemoteCollectionError(f"scp failed: {detail}")
 
     run_path = store.ingest(bundle)
     if snapshot.returncode != 0:
