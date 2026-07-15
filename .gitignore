@@ -1,3 +1,4 @@
+.worktrees/
 .venv/
 .cargo-target/
 __pycache__/
