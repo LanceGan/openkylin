@@ -47,3 +47,28 @@ def test_ingest_rejects_duplicate_run_id(tmp_path: Path) -> None:
 
     with pytest.raises(BundleError, match="already exists"):
         store.ingest(bundle)
+
+
+def test_ingest_rejects_missing_artifact(tmp_path: Path) -> None:
+    bundle = create_probe_bundle(tmp_path / "source")
+    (bundle / "captures/systemd-time.json").unlink()
+
+    with pytest.raises(BundleError, match="file set does not match"):
+        RunStore(tmp_path / "runs").ingest(bundle)
+
+
+def test_ingest_rejects_size_mismatch(tmp_path: Path) -> None:
+    import json
+
+    bundle = create_probe_bundle(tmp_path / "source")
+    manifest_path = bundle / "probe-manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["artifacts"][0]["size_bytes"] += 1
+    manifest_path.write_text(
+        json.dumps(manifest, indent=2) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    with pytest.raises(BundleError, match="size mismatch"):
+        RunStore(tmp_path / "runs").ingest(bundle)
