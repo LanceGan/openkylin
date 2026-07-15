@@ -78,7 +78,7 @@ class RunStore:
                 target = artifact_path(raw_root, artifact.relative_path)
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(source, target)
-            os.replace(incoming, destination)
+            shutil.move(str(incoming), str(destination))
         except Exception:
             if incoming.exists():
                 shutil.rmtree(incoming)
