@@ -1,6 +1,5 @@
 import hashlib
 import json
-import os
 import shutil
 from pathlib import Path
 from uuid import UUID

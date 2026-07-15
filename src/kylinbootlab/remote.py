@@ -70,7 +70,10 @@ def collect_target_run(
     if copied.returncode != 0:
         detail = copied.stderr.strip()
         if snapshot.returncode != 0:
-            detail = f"scp failed (snapshot exited {snapshot.returncode}): {detail}\nsnapshot stderr: {snapshot.stderr.strip()}"
+            detail = (
+                f"scp failed (snapshot exited {snapshot.returncode}): "
+                f"{detail}\nsnapshot stderr: {snapshot.stderr.strip()}"
+            )
         raise RemoteCollectionError(f"scp failed: {detail}")
 
     run_path = store.ingest(bundle)
