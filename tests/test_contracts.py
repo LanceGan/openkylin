@@ -47,6 +47,14 @@ def test_packaged_json_schema_validates_fixture() -> None:
     jsonschema.Draft202012Validator(schema).validate(fixture_data())
 
 
+def test_probe_manifest_rejects_unknown_field() -> None:
+    data = fixture_data()
+    data["untrusted"] = True
+
+    with pytest.raises(ValidationError, match="untrusted"):
+        ProbeManifest.model_validate(data)
+
+
 def test_generated_schema_is_current() -> None:
     subprocess.run(
         [sys.executable, "scripts/export_schema.py", "--check"],

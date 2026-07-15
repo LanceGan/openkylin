@@ -35,11 +35,11 @@ def report(run_id: UUID, data_root: DataRoot = Path("var/runs")) -> None:
 
 @app.command()
 def collect(
-    target: Annotated[str, typer.Option(help="SSH destination")]
-    = "kbl@kbl-target.local",
+    target: Annotated[str, typer.Option(help="SSH destination")] = "kbl@kbl-target.local",
     data_root: DataRoot = Path("var/runs"),
-    incoming_root: Annotated[Path, typer.Option(help="Untrusted incoming bundle root")]
-    = Path("var/incoming"),
+    incoming_root: Annotated[Path, typer.Option(help="Untrusted incoming bundle root")] = Path(
+        "var/incoming"
+    ),
 ) -> None:
     """Capture, retrieve, validate, and import one target boot."""
     run_id = uuid4()
