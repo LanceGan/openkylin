@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>KylinBootLab Baseline {{ run_id }}</title>
+    <style>
+      :root { color-scheme: light; font-family: Georgia, "Times New Roman", serif; }
+      body { margin: 0; background: #f4f5f2; color: #1d2421; }
+      main { width: min(960px, calc(100% - 32px)); margin: 32px auto; }
+      h1, h2 { letter-spacing: 0; }
+      h1 { margin-bottom: 8px; font-size: 32px; }
+      .meta { color: #52605a; overflow-wrap: anywhere; }
+      .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); border-block: 1px solid #aeb7b1; }
+      .metric { padding: 16px 12px; }
+      .metric strong { display: block; margin-top: 6px; font-size: 22px; }
+      table { width: 100%; border-collapse: collapse; font-family: Consolas, monospace; font-size: 14px; }
+      th, td { padding: 9px 8px; border-bottom: 1px solid #ccd2ce; text-align: left; }
+      th:first-child, td:first-child { width: 56px; }
+      @media (max-width: 520px) { main { margin-top: 20px; } h1 { font-size: 26px; } }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>KylinBootLab Baseline</h1>
+      <p class="meta">Run {{ run_id }} · Boot {{ boot_id }}</p>
+      <p class="meta">{{ hostname }} · {{ os_name }} · {{ kernel }}</p>
+      <section class="metrics" aria-label="Boot timing">
+        <div class="metric">Kernel<strong>{{ kernel_time }}</strong></div>
+        <div class="metric">Initrd<strong>{{ initrd_time }}</strong></div>
+        <div class="metric">Userspace<strong>{{ userspace_time }}</strong></div>
+        <div class="metric">OS total<strong>{{ total_time }}</strong></div>
+        <div class="metric">Graphical target<strong>{{ graphical_time }}</strong></div>
+      </section>
+      <h2>Longest systemd units</h2>
+      <table>
+        <thead><tr><th>Rank</th><th>Unit</th><th>Duration</th></tr></thead>
+        <tbody>
+          {% for unit in units %}
+          <tr><td>{{ unit.rank }}</td><td>{{ unit.name }}</td><td>{{ unit.duration }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </main>
+  </body>
+</html>
