@@ -5,6 +5,7 @@ import pytest
 from kylinbootlab.experiments.power import (
     TargetPower,
     VixPower,
+    WolPower,
     power_backend_factory,
 )
 
@@ -126,3 +127,44 @@ def test_vix_power_on_powershell_syntax_is_valid() -> None:
     assert "-NonInteractive" in script
     assert "OpenVM" in script
     assert "PowerOn" in script
+
+
+# -- WolPower tests -----------------------------------------------------------
+
+
+def test_power_backend_wol_is_registered() -> None:
+    power = power_backend_factory(
+        "wol", target="kbl@openkylin.local", mac="00:11:22:33:44:55",
+    )
+    assert isinstance(power, WolPower)
+
+
+def test_wol_power_on_constructs_magic_packet() -> None:
+    fake_run = FakeSubprocessRun()
+    power = WolPower("kbl@target.local", "AA:BB:CC:DD:EE:FF", _runner=fake_run)
+
+    power.power_on()
+
+    # WOL magic packet: 6 bytes FF followed by MAC repeated 16 times
+    cmd_text = " ".join(fake_run.calls[-1])
+    assert "AA:BB:CC:DD:EE:FF" in cmd_text or "wakeonlan" in cmd_text.lower()
+
+
+def test_wol_power_off_uses_ssh() -> None:
+    fake_run = FakeSubprocessRun()
+    power = WolPower("kbl@target.local", "11:22:33:44:55:66", _runner=fake_run)
+
+    power.power_off()
+
+    cmd = fake_run.calls[-1]
+    assert cmd[0] == "ssh"
+    assert "poweroff" in " ".join(cmd)
+
+
+def test_wol_snapshot_restore_is_noop() -> None:
+    fake_run = FakeSubprocessRun()
+    power = WolPower("kbl@target.local", "11:22:33:44:55:66", _runner=fake_run)
+
+    # snapshot_restore on WOL is a no-op (handled by RecoveryManager ostree path)
+    power.snapshot_restore("baseline")
+    assert len(fake_run.calls) == 0
