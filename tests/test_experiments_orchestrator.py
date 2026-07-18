@@ -21,7 +21,7 @@ from kylinbootlab.experiments.orchestrator import (
 from kylinbootlab.experiments.power import TargetPower
 from kylinbootlab.experiments.queue import ExperimentQueue
 from kylinbootlab.experiments.recovery import RecoveryFailedError, RecoveryManager
-from kylinbootlab.store import RunStore
+from kylinbootlab.store import BundleError, RunStore
 from tests.helpers import create_probe_bundle
 
 TARGET = "kbl@stub-target"
@@ -310,3 +310,64 @@ def test_run_queue_retry_succeeds_and_clears_stale_error(
     assert record.completed_at is not None
     assert restore_calls == [TARGET]
     assert len(ssh_attempts) == 2
+
+
+def test_run_queue_survives_bundle_error_and_continues(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A corrupt bundle (BundleError) fails the experiment gracefully; the loop moves on."""
+    store = RunStore(tmp_path / "runs")
+    queue = ExperimentQueue(tmp_path / "queue.jsonl")
+    queue.enqueue([_record("exp-corrupt", max_attempts=1), _record("exp-ok")])
+
+    monkeypatch.setattr(
+        "kylinbootlab.experiments.orchestrator.wait_for_ssh",
+        lambda target, timeout=120.0: True,
+    )
+
+    def fake_collect(
+        *,
+        target: str,
+        run_id: UUID,
+        incoming_root: Path,
+        store: RunStore,
+        runner: object,
+    ) -> Path:
+        running = [record.exp_id for record in queue.list() if record.status == "running"]
+        if running == ["exp-corrupt"]:
+            raise BundleError("manifest checksum mismatch")
+        bundle = create_probe_bundle(tmp_path / "bundles" / str(run_id), run_id=run_id)
+        incoming_root.mkdir(parents=True, exist_ok=True)
+        staged = incoming_root / str(run_id)
+        shutil.copytree(bundle, staged)
+        return store.ingest(staged)
+
+    monkeypatch.setattr(
+        "kylinbootlab.experiments.orchestrator.collect_target_run", fake_collect
+    )
+
+    restore_calls: list[str] = []
+
+    def fake_restore(
+        power: TargetPower, target: str, *, runner: object | None = None
+    ) -> None:
+        restore_calls.append(target)
+
+    monkeypatch.setattr(RecoveryManager, "restore", fake_restore)
+
+    power = StubPower()
+    _orchestrator(queue, store, power, tmp_path).run_queue()
+
+    by_id = {record.exp_id: record for record in queue.list()}
+    corrupt = by_id["exp-corrupt"]
+    assert corrupt.status == "failed"
+    assert corrupt.error is not None
+    assert "collection failed" in corrupt.error
+    assert "manifest checksum mismatch" in corrupt.error
+    assert corrupt.completed_at is not None
+    ok = by_id["exp-ok"]
+    assert ok.status == "done"
+    assert ok.run_id is not None
+    assert ok.error is None
+    # Recovery ran once between the corrupt experiment's two attempts.
+    assert restore_calls == [TARGET]

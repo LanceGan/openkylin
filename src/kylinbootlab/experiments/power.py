@@ -1,9 +1,10 @@
-"""Target power-control abstraction, VMware VIX, and Wake-on-LAN backends.
+"""Target power-control abstraction, VMware vmrun, and Wake-on-LAN backends.
 
 :class:`TargetPower` gives the experiment orchestrator one interface for
-power-cycling targets.  :class:`VixPower` drives a VMware VM through the VIX
-COM API via short PowerShell one-liners.  :class:`WolPower` controls bare-metal
-targets via Wake-on-LAN magic-packet broadcast and SSH shutdown/reset.
+power-cycling targets.  :class:`VixPower` drives a VMware Workstation VM
+through the ``vmrun`` command-line tool (VIX 1.17.0 / Workstation 17).
+:class:`WolPower` controls bare-metal targets via Wake-on-LAN magic-packet
+broadcast and SSH shutdown/reset.
 """
 
 import socket
@@ -12,6 +13,19 @@ from collections.abc import Callable
 from typing import Protocol
 
 type _Runner = Callable[[list[str]], subprocess.CompletedProcess[str]]
+
+#: Default VMware Workstation vmrun binary on the Windows controller.
+VMRUN = r"F:\VMware\VMware Workstation\vmrun.exe"
+
+
+class PowerControlError(RuntimeError):
+    """A power backend operation (on/off/reset/snapshot) failed.
+
+    Raised by backends when the underlying tool reports failure.  The
+    orchestrator wraps this (like any power-sequencing exception) into its
+    retryable experiment-error hierarchy; RecoveryManager's layer-1 snapshot
+    restore falls through to the ostree layer when it sees this raised.
+    """
 
 
 class TargetPower(Protocol):
@@ -30,62 +44,70 @@ class TargetPower(Protocol):
     def guest_alive(self) -> bool: ...
 
 
-def _pwsh(code: str) -> list[str]:
-    """Wrap one-liner PowerShell code into a subprocess-ready command list."""
-    return [
-        "powershell.exe",
-        "-NoProfile",
-        "-NonInteractive",
-        "-Command",
-        code,
-    ]
-
-
 class VixPower:
-    """VMware VIX power control via PowerShell COM.
+    """VMware Workstation power control via the ``vmrun`` CLI.
 
-    The VMX file path identifies the virtual machine.  All operations are
-    idempotent — calling ``power_on`` on an already-running VM is a no-op
-    at the VIX level.
+    The VMX file path identifies the virtual machine.  Mutating operations
+    (``power_on``/``power_off``/``reset``/``snapshot_*``) raise
+    :class:`PowerControlError` when vmrun exits non-zero, with one
+    idempotency carve-out: ``stop``/``reset`` failures whose output says the
+    VM is "not powered on" are treated as success, so ``power_off`` on an
+    already-off VM is a no-op.  (``vmrun start`` on a running VM exits 0, so
+    ``power_on`` needs no carve-out.)
     """
 
-    def __init__(self, vmx_path: str, *, _runner: _Runner | None = None) -> None:
+    def __init__(
+        self,
+        vmx_path: str,
+        *,
+        vmrun_path: str = VMRUN,
+        _runner: _Runner | None = None,
+    ) -> None:
         self.vmx_path = vmx_path
+        self.vmrun_path = vmrun_path
         self._run: _Runner = _runner if _runner is not None else self._real_run
 
     @staticmethod
     def _real_run(args: list[str]) -> subprocess.CompletedProcess[str]:
         return subprocess.run(args, check=False, capture_output=True, text=True)
 
-    def _vix(self, operation: str) -> subprocess.CompletedProcess[str]:
-        """Open the VM through VIX and invoke one COM ``operation`` on it."""
-        return self._run(
-            _pwsh(
-                f'$vm = (Connect-VIX -Host localhost).OpenVM("{self.vmx_path}"); '
-                f"$vm.{operation}"
-            )
+    def _vmrun(self, *args: str) -> subprocess.CompletedProcess[str]:
+        """Invoke ``vmrun -T ws <verb> [args...]`` and return the raw result."""
+        return self._run([self.vmrun_path, "-T", "ws", *args])
+
+    def _vmrun_checked(self, *args: str, tolerate_not_powered_on: bool = False) -> None:
+        """Run a mutating vmrun operation; raise :class:`PowerControlError` on failure."""
+        result = self._vmrun(*args)
+        if result.returncode == 0:
+            return
+        output = f"{result.stdout}\n{result.stderr}"
+        if tolerate_not_powered_on and "not powered on" in output.lower():
+            return  # VM already off — idempotent success
+        raise PowerControlError(
+            f"vmrun {args[0]} failed for {self.vmx_path} "
+            f"(exit {result.returncode}): {output.strip()}"
         )
 
     # -- power control ---------------------------------------------------
 
     def power_on(self) -> None:
-        self._vix("PowerOn()")
+        self._vmrun_checked("start", self.vmx_path, "nogui")
 
     def power_off(self) -> None:
-        self._vix("PowerOff()")
+        self._vmrun_checked("stop", self.vmx_path, "hard", tolerate_not_powered_on=True)
 
     def reset(self) -> None:
-        self._vix("Reset()")
+        self._vmrun_checked("reset", self.vmx_path, "hard", tolerate_not_powered_on=True)
 
     def snapshot_create(self, name: str) -> None:
-        self._vix(f'CreateSnapshot("{name}")')
+        self._vmrun_checked("snapshot", self.vmx_path, name)
 
     def snapshot_restore(self, name: str) -> None:
-        self._vix(f'RevertToSnapshot("{name}")')
+        self._vmrun_checked("revertToSnapshot", self.vmx_path, name)
 
     def guest_alive(self) -> bool:
-        result = self._vix("IsPoweredOn")
-        return result.returncode == 0 and "True" in result.stdout
+        result = self._vmrun("list")
+        return result.returncode == 0 and self.vmx_path.lower() in result.stdout.lower()
 
 
 class WolPower:

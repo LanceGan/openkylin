@@ -22,7 +22,7 @@ from kylinbootlab.remote import (
     SubprocessRunner,
     collect_target_run,
 )
-from kylinbootlab.store import RunStore
+from kylinbootlab.store import BundleError, RunStore
 
 _SSH_DEADLINE_SECONDS: float = 120.0
 
@@ -35,7 +35,12 @@ class ExperimentError(Exception):
 
 
 class PowerControlError(ExperimentError):
-    """A power operation (on/off/reset/snapshot) failed."""
+    """A power operation (on/off/reset/snapshot) failed.
+
+    Wraps any exception raised while sequencing target power — including the
+    backend-level :class:`kylinbootlab.experiments.power.PowerControlError`
+    (a ``RuntimeError``) — into the retryable experiment-error hierarchy.
+    """
 
 
 class TargetUnreachableError(ExperimentError):
@@ -53,6 +58,12 @@ class ExperimentOrchestrator:
     counter is preserved so retry limits still apply.  This is safe because
     Phase 2 assumes a single controller per queue file, so any ``running``
     record seen at loop entry can only be a leftover, never a live claim.
+
+    Prerequisites: with the ``vix`` backend, the VMware VM must already have
+    a snapshot named ``baseline`` — the orchestrator restores it before every
+    clean boot (and RecoveryManager restores it on layer-1 recovery) but never
+    creates it.  Create it once via ``vmrun -T ws snapshot <vmx> baseline`` or
+    the VMware Workstation GUI before running the queue.
     """
 
     def __init__(
@@ -125,7 +136,7 @@ class ExperimentOrchestrator:
                 store=self.store,
                 runner=SubprocessRunner(),
             )
-        except RemoteCollectionError as exc:
+        except (RemoteCollectionError, BundleError) as exc:
             raise ExperimentError(f"collection failed for {exp_id}: {exc}") from exc
 
         # 4. Success.
