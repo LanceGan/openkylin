@@ -1,5 +1,10 @@
 # Foundation Baseline Runbook
 
+> **Status:** Phase 1 code is complete and quality-gated (26 tests, ruff, mypy, cargo
+> test, cargo clippy). Real openKylin target acceptance (Sections 3-4 below) is
+> pending hardware availability. Once an openKylin machine is provisioned, follow
+> the steps in order from Section 1.
+
 ## 1. Install openKylin
 
 Install the current official stable openKylin standard image on the dedicated SSD. During installation create the account `kbl`, use the default graphical desktop, and keep Secure Boot and storage settings unchanged after the first baseline. Set the hostname at the physical console:

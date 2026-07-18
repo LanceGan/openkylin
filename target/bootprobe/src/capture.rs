@@ -22,7 +22,10 @@ pub fn run_command(program: &str, args: &[&str]) -> CommandCapture {
         .chain(args.iter().map(|value| (*value).to_owned()))
         .collect();
 
-    match Command::new(program).args(args).env("LC_ALL", "C").output() {
+    match Command::new(program)
+        .args(args)
+        .env("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
+        .env("LC_ALL", "C").output() {
         Ok(output) => CommandCapture {
             command,
             exit_code: output.status.code().unwrap_or(-1),

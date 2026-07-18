@@ -26,7 +26,12 @@ def load_bundle_manifest(bundle: Path) -> ProbeManifest:
 
 
 def artifact_path(root: Path, relative_path: str) -> Path:
-    return root.joinpath(*relative_path.split("/"))
+    result = root.joinpath(*relative_path.split("/"))
+    root_resolved = root.resolve()
+    result_resolved = result.resolve()
+    if not result_resolved.is_relative_to(root_resolved):
+        raise BundleError(f"artifact path escapes bundle: {relative_path}")
+    return result
 
 
 class RunStore:
@@ -34,6 +39,7 @@ class RunStore:
         self.root = root
 
     def ingest(self, bundle: Path) -> Path:
+        # --- Phase 0: Pre-conditions ---
         if bundle.is_symlink() or not bundle.is_dir():
             raise BundleError("bundle must be a real directory")
 
@@ -45,6 +51,7 @@ class RunStore:
         if incoming.exists():
             raise BundleError(f"stale incoming run exists: {incoming}")
 
+        # --- Phase 1: Enumerate source (symlink + file-set check) ---
         expected_files = {"probe-manifest.json"}
         expected_files.update(artifact.relative_path for artifact in manifest.artifacts)
         actual_files: set[str] = set()
@@ -59,24 +66,37 @@ class RunStore:
                 f"expected={sorted(expected_files)} actual={sorted(actual_files)}"
             )
 
-        for artifact in manifest.artifacts:
-            source = artifact_path(bundle, artifact.relative_path)
-            data = source.read_bytes()
-            if len(data) != artifact.size_bytes:
-                raise BundleError(f"size mismatch for {artifact.name}")
-            if hashlib.sha256(data).hexdigest() != artifact.sha256:
-                raise BundleError(f"checksum mismatch for {artifact.name}")
-
+        # --- Phase 2: Copy to staging ---
         self.root.mkdir(parents=True, exist_ok=True)
         try:
             raw_root = incoming / "raw"
             raw_root.mkdir(parents=True)
-            shutil.copy2(bundle / "probe-manifest.json", incoming / "manifest.json")
+            # Write manifest from validated in-memory object (not disk copy)
+            (incoming / "manifest.json").write_text(
+                manifest.model_dump_json(indent=2) + "\n",
+                encoding="utf-8",
+                newline="\n",
+            )
             for artifact in manifest.artifacts:
                 source = artifact_path(bundle, artifact.relative_path)
                 target = artifact_path(raw_root, artifact.relative_path)
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(source, target)
+
+            # --- Phase 3: Verify FROM STAGING (closes TOCTOU) ---
+            for artifact in manifest.artifacts:
+                copied = artifact_path(raw_root, artifact.relative_path)
+                if copied.is_symlink():
+                    raise BundleError(
+                        f"artifact resolved to symlink after copy: {artifact.name}"
+                    )
+                data = copied.read_bytes()
+                if len(data) != artifact.size_bytes:
+                    raise BundleError(f"size mismatch for {artifact.name}")
+                if hashlib.sha256(data).hexdigest() != artifact.sha256:
+                    raise BundleError(f"checksum mismatch for {artifact.name}")
+
+            # --- Phase 4: Atomically install ---
             shutil.move(str(incoming), str(destination))
         except Exception:
             if incoming.exists():

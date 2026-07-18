@@ -55,7 +55,7 @@ class ArtifactRecord(ContractModel):
             or path.is_absolute()
             or "\\" in value
             or any(part in {"", ".", ".."} for part in parts)
-            or ":" in parts[0]
+            or any(":" in part for part in parts)
         ):
             raise ValueError("relative_path must be a normalized relative POSIX path")
         return value
