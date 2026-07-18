@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
-from kylinbootlab.experiments.aliveness import wait_for_ssh
+from kylinbootlab.experiments.aliveness import wait_for_boot_finished, wait_for_ssh
 from kylinbootlab.experiments.contracts import ExperimentRecord
 from kylinbootlab.experiments.power import TargetPower
 from kylinbootlab.experiments.queue import ExperimentQueue
@@ -124,6 +124,15 @@ class ExperimentOrchestrator:
             raise TargetUnreachableError(
                 f"target {self.target} not SSH-reachable within "
                 f"{_SSH_DEADLINE_SECONDS:.0f}s for {exp_id}"
+            )
+
+        # 2b. SSH answers before systemd finishes booting; collecting in that
+        # window fails with "Bootup is not yet finished".  Wait for the exact
+        # command the probe needs (systemd-analyze time) to succeed.
+        if not wait_for_boot_finished(self.target, timeout=_SSH_DEADLINE_SECONDS):
+            raise TargetUnreachableError(
+                f"systemd boot did not finish within "
+                f"{_SSH_DEADLINE_SECONDS:.0f}s on {self.target} for {exp_id}"
             )
 
         # 3. Collect a boot snapshot through the Phase 1 pipeline.
