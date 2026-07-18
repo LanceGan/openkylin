@@ -77,6 +77,28 @@ def _orchestrator(
     )
 
 
+def _patch_collect(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Replace ``collect_target_run`` with a local bundle + ``store.ingest`` stub."""
+
+    def fake_collect(
+        *,
+        target: str,
+        run_id: UUID,
+        incoming_root: Path,
+        store: RunStore,
+        runner: object,
+    ) -> Path:
+        bundle = create_probe_bundle(tmp_path / "bundles" / str(run_id), run_id=run_id)
+        incoming_root.mkdir(parents=True, exist_ok=True)
+        staged = incoming_root / str(run_id)
+        shutil.copytree(bundle, staged)
+        return store.ingest(staged)
+
+    monkeypatch.setattr(
+        "kylinbootlab.experiments.orchestrator.collect_target_run", fake_collect
+    )
+
+
 # -- wait_for_ssh (preserved from Task 5) -----------------------------------
 
 
@@ -131,24 +153,7 @@ def test_run_queue_completes_three_experiments(
         "kylinbootlab.experiments.orchestrator.wait_for_ssh",
         lambda target, timeout=120.0: True,
     )
-
-    def fake_collect(
-        *,
-        target: str,
-        run_id: UUID,
-        incoming_root: Path,
-        store: RunStore,
-        runner: object,
-    ) -> Path:
-        bundle = create_probe_bundle(tmp_path / "bundles" / str(run_id), run_id=run_id)
-        incoming_root.mkdir(parents=True, exist_ok=True)
-        staged = incoming_root / str(run_id)
-        shutil.copytree(bundle, staged)
-        return store.ingest(staged)
-
-    monkeypatch.setattr(
-        "kylinbootlab.experiments.orchestrator.collect_target_run", fake_collect
-    )
+    _patch_collect(monkeypatch, tmp_path)
 
     power = StubPower()
     _orchestrator(queue, store, power, tmp_path).run_queue()
@@ -237,3 +242,71 @@ def test_run_queue_skips_experiment_when_recovery_fails(
         assert "recovery failed after attempt 1" in record.error
         assert record.completed_at is not None
     assert len(restore_calls) == 2
+
+
+def test_run_queue_requeues_experiment_left_running_by_crashed_controller(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A record stuck ``running`` after a controller crash is re-run to ``done``."""
+    store = RunStore(tmp_path / "runs")
+    queue = ExperimentQueue(tmp_path / "queue.jsonl")
+    queue.enqueue([_record("exp-interrupted")])
+    # Simulate a crash mid-experiment: the record was claimed but never finished.
+    queue.update("exp-interrupted", status="running")
+    assert queue.list("pending") == []
+
+    monkeypatch.setattr(
+        "kylinbootlab.experiments.orchestrator.wait_for_ssh",
+        lambda target, timeout=120.0: True,
+    )
+    _patch_collect(monkeypatch, tmp_path)
+
+    power = StubPower()
+    _orchestrator(queue, store, power, tmp_path).run_queue()
+
+    (record,) = queue.list()
+    assert record.status == "done"
+    assert record.run_id is not None
+    assert record.completed_at is not None
+    assert record.error is None
+
+
+def test_run_queue_retry_succeeds_and_clears_stale_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """SSH fails once then recovers: the retried record ends done with no error."""
+    store = RunStore(tmp_path / "runs")
+    queue = ExperimentQueue(tmp_path / "queue.jsonl")
+    queue.enqueue([_record("exp-flaky")])
+
+    ssh_attempts: list[str] = []
+
+    def flaky_wait_for_ssh(target: str, timeout: float = 120.0) -> bool:
+        ssh_attempts.append(target)
+        return len(ssh_attempts) > 1  # first attempt fails, retry succeeds
+
+    monkeypatch.setattr(
+        "kylinbootlab.experiments.orchestrator.wait_for_ssh", flaky_wait_for_ssh
+    )
+
+    restore_calls: list[str] = []
+
+    def fake_restore(
+        power: TargetPower, target: str, *, runner: object | None = None
+    ) -> None:
+        restore_calls.append(target)
+
+    monkeypatch.setattr(RecoveryManager, "restore", fake_restore)
+    _patch_collect(monkeypatch, tmp_path)
+
+    power = StubPower()
+    _orchestrator(queue, store, power, tmp_path).run_queue()
+
+    (record,) = queue.list()
+    assert record.status == "done"
+    assert record.attempt == 1
+    assert record.error is None
+    assert record.run_id is not None
+    assert record.completed_at is not None
+    assert restore_calls == [TARGET]
+    assert len(ssh_attempts) == 2

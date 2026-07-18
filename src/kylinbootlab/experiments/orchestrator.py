@@ -46,7 +46,14 @@ class TargetUnreachableError(ExperimentError):
 
 
 class ExperimentOrchestrator:
-    """Run an experiment queue against one target, looping until drained."""
+    """Run an experiment queue against one target, looping until drained.
+
+    Interrupted experiments (status=running from a crashed controller) are
+    automatically re-queued as pending at run_queue() entry; the attempt
+    counter is preserved so retry limits still apply.  This is safe because
+    Phase 2 assumes a single controller per queue file, so any ``running``
+    record seen at loop entry can only be a leftover, never a live claim.
+    """
 
     def __init__(
         self,
@@ -69,6 +76,8 @@ class ExperimentOrchestrator:
         ``started_at``); on retryable failure the record is re-queued as
         ``pending`` so a later iteration picks it up again.
         """
+        # Re-queue experiments a crashed controller left behind (see class docstring).
+        self.queue.reset(status="running", new_status="pending")
         while (claimed := self.queue.dequeue("pending")) is not None:
             try:
                 self._run_one_experiment(claimed.exp_id)
@@ -124,6 +133,7 @@ class ExperimentOrchestrator:
             exp_id,
             status="done",
             run_id=run_id,
+            error=None,  # clear the last failure reason from earlier attempts
             completed_at=datetime.now(UTC),
         )
 
