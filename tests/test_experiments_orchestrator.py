@@ -1,13 +1,83 @@
 from __future__ import annotations
 
+import shutil
 import subprocess
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 import pytest
 
 from kylinbootlab.experiments.aliveness import wait_for_ssh
+from kylinbootlab.experiments.contracts import ExperimentRecord
+from kylinbootlab.experiments.orchestrator import (
+    ExperimentError,
+    ExperimentOrchestrator,
+    PowerControlError,
+    TargetUnreachableError,
+)
+from kylinbootlab.experiments.power import TargetPower
+from kylinbootlab.experiments.queue import ExperimentQueue
+from kylinbootlab.experiments.recovery import RecoveryFailedError, RecoveryManager
+from kylinbootlab.store import RunStore
+from tests.helpers import create_probe_bundle
+
+TARGET = "kbl@stub-target"
+
+
+# -- test doubles ----------------------------------------------------------
+
+
+class StubPower:
+    """TargetPower double: records every call; guest is never alive."""
+
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    def power_on(self) -> None:
+        self.calls.append("power_on")
+
+    def power_off(self) -> None:
+        self.calls.append("power_off")
+
+    def reset(self) -> None:
+        self.calls.append("reset")
+
+    def snapshot_create(self, name: str) -> None:
+        self.calls.append(f"snapshot_create:{name}")
+
+    def snapshot_restore(self, name: str) -> None:
+        self.calls.append(f"snapshot_restore:{name}")
+
+    def guest_alive(self) -> bool:
+        self.calls.append("guest_alive")
+        return False
+
+
+def _record(exp_id: str, *, max_attempts: int = 3) -> ExperimentRecord:
+    return ExperimentRecord(
+        exp_id=exp_id,
+        profile="baseline",
+        max_attempts=max_attempts,
+        created_at=datetime(2026, 7, 18, 12, 0, tzinfo=UTC),
+    )
+
+
+def _orchestrator(
+    queue: ExperimentQueue, store: RunStore, power: StubPower, tmp_path: Path
+) -> ExperimentOrchestrator:
+    return ExperimentOrchestrator(
+        queue=queue,
+        store=store,
+        power=power,
+        target=TARGET,
+        incoming_root=tmp_path / "incoming",
+    )
+
+
+# -- wait_for_ssh (preserved from Task 5) -----------------------------------
 
 
 def test_wait_for_ssh_returns_false_when_ssh_never_answers(tmp_path: Path) -> None:
@@ -34,3 +104,136 @@ def test_wait_for_ssh_returns_true_on_first_success(monkeypatch: pytest.MonkeyPa
 
     result = wait_for_ssh("target.local", timeout=10, interval=0.05)
     assert result is True
+
+
+# -- error hierarchy ---------------------------------------------------------
+
+
+def test_error_hierarchy() -> None:
+    """Power and reachability errors are retryable ExperimentError subclasses."""
+    assert issubclass(ExperimentError, Exception)
+    assert issubclass(PowerControlError, ExperimentError)
+    assert issubclass(TargetUnreachableError, ExperimentError)
+
+
+# -- run_queue integration ----------------------------------------------------
+
+
+def test_run_queue_completes_three_experiments(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A three-experiment queue drains with every record done and a unique run."""
+    store = RunStore(tmp_path / "runs")
+    queue = ExperimentQueue(tmp_path / "queue.jsonl")
+    queue.enqueue([_record(f"exp-{index:03d}") for index in range(3)])
+
+    monkeypatch.setattr(
+        "kylinbootlab.experiments.orchestrator.wait_for_ssh",
+        lambda target, timeout=120.0: True,
+    )
+
+    def fake_collect(
+        *,
+        target: str,
+        run_id: UUID,
+        incoming_root: Path,
+        store: RunStore,
+        runner: object,
+    ) -> Path:
+        bundle = create_probe_bundle(tmp_path / "bundles" / str(run_id), run_id=run_id)
+        incoming_root.mkdir(parents=True, exist_ok=True)
+        staged = incoming_root / str(run_id)
+        shutil.copytree(bundle, staged)
+        return store.ingest(staged)
+
+    monkeypatch.setattr(
+        "kylinbootlab.experiments.orchestrator.collect_target_run", fake_collect
+    )
+
+    power = StubPower()
+    _orchestrator(queue, store, power, tmp_path).run_queue()
+
+    records = queue.list()
+    assert [record.status for record in records] == ["done", "done", "done"]
+    run_ids = {record.run_id for record in records}
+    assert len(run_ids) == 3
+    for record in records:
+        assert record.run_id is not None
+        assert record.started_at is not None
+        assert record.completed_at is not None
+        assert record.error is None
+        assert (tmp_path / "runs" / str(record.run_id) / "manifest.json").is_file()
+    boot_cycle = ["guest_alive", "snapshot_restore:baseline", "power_on", "power_off"]
+    assert power.calls == boot_cycle * 3
+
+
+def test_run_queue_marks_failed_after_attempts_exhausted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """SSH never comes up: recovery runs between attempts, then the record fails."""
+    store = RunStore(tmp_path / "runs")
+    queue = ExperimentQueue(tmp_path / "queue.jsonl")
+    queue.enqueue([_record("exp-unreachable", max_attempts=2)])
+
+    monkeypatch.setattr(
+        "kylinbootlab.experiments.orchestrator.wait_for_ssh",
+        lambda target, timeout=120.0: False,
+    )
+
+    restore_calls: list[str] = []
+
+    def fake_restore(
+        power: TargetPower, target: str, *, runner: object | None = None
+    ) -> None:
+        restore_calls.append(target)
+
+    monkeypatch.setattr(RecoveryManager, "restore", fake_restore)
+
+    power = StubPower()
+    _orchestrator(queue, store, power, tmp_path).run_queue()
+
+    (record,) = queue.list()
+    assert record.status == "failed"
+    assert record.attempt == 2
+    assert record.error is not None
+    assert "not SSH-reachable" in record.error
+    assert record.completed_at is not None
+    # Recovery ran between attempts: once after each retryable failure.
+    assert restore_calls == [TARGET, TARGET]
+    # Best-effort power_off ran after every boot attempt (2 retries + final).
+    assert power.calls.count("power_off") == 3
+
+
+def test_run_queue_skips_experiment_when_recovery_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """RecoveryFailedError marks the record skipped and the loop moves on."""
+    store = RunStore(tmp_path / "runs")
+    queue = ExperimentQueue(tmp_path / "queue.jsonl")
+    queue.enqueue([_record("exp-a"), _record("exp-b")])
+
+    monkeypatch.setattr(
+        "kylinbootlab.experiments.orchestrator.wait_for_ssh",
+        lambda target, timeout=120.0: False,
+    )
+
+    restore_calls: list[str] = []
+
+    def failing_restore(
+        power: TargetPower, target: str, *, runner: object | None = None
+    ) -> None:
+        restore_calls.append(target)
+        raise RecoveryFailedError("both recovery layers failed")
+
+    monkeypatch.setattr(RecoveryManager, "restore", failing_restore)
+
+    power = StubPower()
+    _orchestrator(queue, store, power, tmp_path).run_queue()
+
+    records = queue.list()
+    assert [record.status for record in records] == ["skipped", "skipped"]
+    for record in records:
+        assert record.error is not None
+        assert "recovery failed after attempt 1" in record.error
+        assert record.completed_at is not None
+    assert len(restore_calls) == 2
