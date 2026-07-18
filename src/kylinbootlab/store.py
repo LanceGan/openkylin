@@ -1,5 +1,6 @@
 import hashlib
 import json
+import os
 import shutil
 from pathlib import Path
 from uuid import UUID
@@ -12,10 +13,14 @@ from kylinbootlab.schema import load_probe_manifest_schema
 
 
 class BundleError(ValueError):
-    pass
+    """Raised when a probe bundle fails validation — never results in partial import."""
 
 
 def load_bundle_manifest(bundle: Path) -> ProbeManifest:
+    """Load and validate a probe-manifest.json from a bundle directory.
+
+    Validates against both the JSON Schema and Pydantic model (defense in depth).
+    """
     manifest_path = bundle / "probe-manifest.json"
     try:
         raw = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -26,6 +31,12 @@ def load_bundle_manifest(bundle: Path) -> ProbeManifest:
 
 
 def artifact_path(root: Path, relative_path: str) -> Path:
+    """Resolve a manifest-declared relative_path under *root*.
+
+    The containment check is defense-in-depth — the Pydantic validator in
+    contracts.py already rejects ``..`` segments, but this guards against
+    future schema changes or hand-crafted manifests that bypass validation.
+    """
     result = root.joinpath(*relative_path.split("/"))
     root_resolved = root.resolve()
     result_resolved = result.resolve()
@@ -35,6 +46,21 @@ def artifact_path(root: Path, relative_path: str) -> Path:
 
 
 class RunStore:
+    """Immutable, append-only store for validated probe runs.
+
+    Each run lives at ``<root>/<run_id>/`` with the structure::
+
+        <run_id>/
+        ├── manifest.json       # canonical manifest (from in-memory model)
+        ├── raw/                # verified artifacts (never modified)
+        │   └── captures/
+        ├── derived/            # rebuildable metrics
+        └── reports/            # rebuildable HTML/JSON reports
+
+    ``ingest()`` uses a 4-phase pipeline (enumerate → copy-to-staging →
+    verify-from-staging → atomic-install) to close TOCTOU windows.
+    """
+
     def __init__(self, root: Path) -> None:
         self.root = root
 
@@ -97,7 +123,10 @@ class RunStore:
                     raise BundleError(f"checksum mismatch for {artifact.name}")
 
             # --- Phase 4: Atomically install ---
-            shutil.move(str(incoming), str(destination))
+            # os.replace is atomic on POSIX (rename syscall) when source and
+            # destination are on the same filesystem — which they always are
+            # since both incoming and destination live under self.root.
+            os.replace(incoming, destination)
         except Exception:
             if incoming.exists():
                 shutil.rmtree(incoming)

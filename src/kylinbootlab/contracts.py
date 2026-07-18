@@ -25,10 +25,14 @@ Command = Annotated[list[str], Field(min_length=1)]
 
 
 class ContractModel(BaseModel):
+    """Base for all persisted KylinBootLab models — forbids undeclared fields."""
+
     model_config = ConfigDict(extra="forbid")
 
 
 class HostInfo(ContractModel):
+    """Identifies the target machine: hostname, kernel, OS, and architecture."""
+
     hostname: Annotated[str, Field(min_length=1)]
     kernel_release: Annotated[str, Field(min_length=1)]
     os_id: Annotated[str, Field(min_length=1)]
@@ -37,6 +41,8 @@ class HostInfo(ContractModel):
 
 
 class ArtifactRecord(ContractModel):
+    """One captured artifact within a probe snapshot — metadata and integrity hash."""
+
     name: ArtifactName
     relative_path: str
     sha256: Sha256
@@ -48,6 +54,11 @@ class ArtifactRecord(ContractModel):
     @field_validator("relative_path")
     @classmethod
     def validate_relative_path(cls, value: str) -> str:
+        """Reject absolute paths, parent traversal, backslashes, and colons.
+
+        Colons are rejected in every path segment to block Windows drive-letter
+        escapes (C:, D:) regardless of position.
+        """
         parts = value.split("/")
         path = PurePosixPath(value)
         if (
@@ -62,6 +73,8 @@ class ArtifactRecord(ContractModel):
 
 
 class ProbeManifest(ContractModel):
+    """Top-level v1 probe snapshot manifest — binds a run to its artifacts."""
+
     schema_version: Literal[1]
     run_id: UUID
     boot_id: UUID
@@ -72,6 +85,7 @@ class ProbeManifest(ContractModel):
 
     @model_validator(mode="after")
     def reject_duplicate_artifacts(self) -> Self:
+        """Ensure no two artifacts share the same name or relative path."""
         names = [artifact.name for artifact in self.artifacts]
         paths = [artifact.relative_path for artifact in self.artifacts]
         if len(names) != len(set(names)):

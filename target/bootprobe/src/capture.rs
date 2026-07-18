@@ -8,6 +8,13 @@ use sha2::{Digest, Sha256};
 
 use crate::model::ArtifactRecord;
 
+/// Fixed `PATH` used by every subprocess the probe spawns.
+///
+/// This is the same path that the `kbl-capture-run` wrapper sets, providing
+/// defense-in-depth in case the wrapper's environment is somehow bypassed.
+pub const FIXED_PATH: &str =
+    "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CommandCapture {
@@ -17,15 +24,24 @@ pub struct CommandCapture {
     pub stderr: String,
 }
 
+/// Execute a command with a fixed safe `PATH` and `LC_ALL=C`.
+///
+/// Returns a `CommandCapture` even when the command fails to start or exits
+/// non-zero — the probe never panics on a misbehaving subprocess.  The SSH
+/// transport layer in the controller enforces a 60 s deadline on the overall
+/// session; per-command timeouts can be added in a future Rust toolchain
+/// version via `Child::wait_timeout` or the `wait-timeout` crate.
 pub fn run_command(program: &str, args: &[&str]) -> CommandCapture {
-    let command = std::iter::once(program.to_owned())
+    let command: Vec<String> = std::iter::once(program.to_owned())
         .chain(args.iter().map(|value| (*value).to_owned()))
         .collect();
 
     match Command::new(program)
         .args(args)
-        .env("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
-        .env("LC_ALL", "C").output() {
+        .env("PATH", FIXED_PATH)
+        .env("LC_ALL", "C")
+        .output()
+    {
         Ok(output) => CommandCapture {
             command,
             exit_code: output.status.code().unwrap_or(-1),

@@ -1,9 +1,17 @@
 import json
 from pathlib import Path
 
-from kylinbootlab.report import write_baseline_report
+from kylinbootlab.report import seconds, write_baseline_report
 from kylinbootlab.store import RunStore
 from tests.helpers import RUN_ID, create_probe_bundle
+
+
+def test_seconds_formats_none_as_not_reported() -> None:
+    assert seconds(None) == "not reported"
+
+
+def test_seconds_formats_nanoseconds() -> None:
+    assert seconds(1_500_000_000) == "1.500 s"
 
 
 def test_report_writes_metrics_and_html_deterministically(tmp_path: Path) -> None:

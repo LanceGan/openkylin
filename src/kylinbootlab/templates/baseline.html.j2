@@ -32,6 +32,8 @@
         <div class="metric">OS total<strong>{{ total_time }}</strong></div>
         <div class="metric">Graphical target<strong>{{ graphical_time }}</strong></div>
       </section>
+      <h2>Methodology</h2>
+      <p class="meta">All durations are measured from <code>T0</code> (Linux <code>CLOCK_BOOTTIME</code> monotonic zero). Firmware, UEFI, and GRUB menu delays are excluded per competition rules. Data captured via <code>systemd-analyze time</code> and <code>systemd-analyze blame</code> with <code>LC_ALL=C</code> on the target. Each run is checksummed end-to-end and stored immutably.</p>
       <h2>Longest systemd units</h2>
       <table>
         <thead><tr><th>Rank</th><th>Unit</th><th>Duration</th></tr></thead>

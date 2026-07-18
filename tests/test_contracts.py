@@ -73,6 +73,28 @@ def test_relative_path_rejects_colon_in_any_segment(bad_path: str) -> None:
         ProbeManifest.model_validate(data)
 
 
+def test_probe_manifest_rejects_duplicate_artifact_names() -> None:
+    data = fixture_data()
+    artifacts = data["artifacts"]
+    assert isinstance(artifacts, list)
+    # Duplicate the existing artifact entry
+    artifacts.append(dict(artifacts[0]))
+    # JSON Schema won't reject duplicate names, but Pydantic should
+    with pytest.raises(ValidationError, match="unique"):
+        ProbeManifest.model_validate(data)
+
+
+def test_probe_manifest_rejects_duplicate_relative_paths() -> None:
+    data = fixture_data()
+    artifacts = data["artifacts"]
+    assert isinstance(artifacts, list)
+    dupe = dict(artifacts[0])
+    dupe["name"] = "different-name"  # unique name, but same path
+    artifacts.append(dupe)
+    with pytest.raises(ValidationError, match="unique"):
+        ProbeManifest.model_validate(data)
+
+
 def test_generated_schema_is_current() -> None:
     subprocess.run(
         [sys.executable, "scripts/export_schema.py", "--check"],

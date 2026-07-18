@@ -56,3 +56,29 @@ fn snapshot_refuses_a_nonempty_output_directory() {
 
     assert!(error.to_string().contains("not empty"));
 }
+
+#[test]
+fn snapshot_fails_when_required_capture_has_nonzero_exit() {
+    let root = tempdir().unwrap();
+    let output = root.path().join("run");
+    let run_id = Uuid::new_v4();
+
+    #[cfg(target_os = "windows")]
+    let spec = CaptureSpec {
+        name: "failing-cmd",
+        command: vec!["cmd".to_owned(), "/C".to_owned(), "exit".to_owned(), "1".to_owned()],
+        required: true,
+    };
+    #[cfg(not(target_os = "windows"))]
+    let spec = CaptureSpec {
+        name: "failing-cmd",
+        command: vec!["sh".to_owned(), "-c".to_owned(), "exit 1".to_owned()],
+        required: true,
+    };
+
+    let error = capture_snapshot(&output, run_id, context(), &[spec]).unwrap_err();
+
+    assert!(error.to_string().contains("required captures failed"));
+    // Manifest should still be written for diagnostics
+    assert!(output.join("probe-manifest.json").is_file());
+}

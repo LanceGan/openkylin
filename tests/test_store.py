@@ -85,6 +85,23 @@ def test_artifact_path_rejects_escape_via_containment(tmp_path: Path) -> None:
         artifact_path(root, "../../outside.json")
 
 
+def test_ingest_rejects_stale_incoming_directory(tmp_path: Path) -> None:
+    store = RunStore(tmp_path / "runs")
+    store.root.mkdir(parents=True)
+    (store.root / f".incoming-{RUN_ID}").mkdir()
+
+    bundle = create_probe_bundle(tmp_path / "source")
+    with pytest.raises(BundleError, match="stale incoming run exists"):
+        store.ingest(bundle)
+
+
+def test_load_manifest_rejects_nonexistent_run_id(tmp_path: Path) -> None:
+    store = RunStore(tmp_path / "runs")
+
+    with pytest.raises(BundleError, match="invalid stored manifest"):
+        store.load_manifest(RUN_ID)
+
+
 def test_ingest_cleans_up_incoming_on_verification_failure(tmp_path: Path) -> None:
     bundle = create_probe_bundle(tmp_path / "source")
     # Tamper with an artifact AFTER copy by crafting a manifest with wrong checksum

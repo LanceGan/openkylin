@@ -35,11 +35,19 @@ def report(run_id: UUID, data_root: DataRoot = Path("var/runs")) -> None:
 
 @app.command()
 def collect(
-    target: Annotated[str, typer.Option(help="SSH destination")] = "kbl@kbl-target.local",
+    target: Annotated[str, typer.Option(help="SSH destination")]
+    = "kbl@kbl-target.local",
     data_root: DataRoot = Path("var/runs"),
-    incoming_root: Annotated[Path, typer.Option(help="Untrusted incoming bundle root")] = Path(
-        "var/incoming"
-    ),
+    incoming_root: Annotated[Path, typer.Option(help="Untrusted incoming bundle root")]
+    = Path("var/incoming"),
+    probe_cmd: Annotated[
+        str,
+        typer.Option(help="Path to kbl-bootprobe on the target"),
+    ] = "/usr/local/bin/kbl-bootprobe",
+    remote_dir: Annotated[
+        str,
+        typer.Option(help="Scratch directory for snapshots on the target"),
+    ] = "/var/lib/kylinbootlab/runs",
 ) -> None:
     """Capture, retrieve, validate, and import one target boot."""
     run_id = uuid4()
@@ -49,5 +57,7 @@ def collect(
         incoming_root=incoming_root,
         store=RunStore(data_root),
         runner=SubprocessRunner(),
+        probe_cmd=probe_cmd,
+        remote_dir=remote_dir,
     )
     typer.echo(run_path.name)
