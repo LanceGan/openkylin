@@ -71,17 +71,18 @@ class TargetPower(Protocol):
 
 | 方法 | VIX 后端 | 裸机 WOL 后端 |
 |------|---------|-------------|
-| `power_on` | PowerShell COM → `VixVM_PowerOn` | 向目标 MAC 发 WOL magic packet |
-| `power_off` | PowerShell COM → `VixVM_PowerOff` | `ssh sudo poweroff` |
-| `reset` | `VixVM_Reset` | power_off → power_on |
-| `snapshot_create` | `VixVM_CreateSnapshot` | Not supported（无操作） |
-| `snapshot_restore` | `VixVM_RevertToSnapshot` | `ostree admin undeploy` + 重启 |
-| `guest_alive` | VIX 查询 VM powerState | SSH probe |
+| `power_on` | `vmrun -T ws start <vmx> nogui` | 向目标 MAC 发 WOL magic packet |
+| `power_off` | `vmrun -T ws stop <vmx> hard` | `ssh sudo poweroff` |
+| `reset` | `vmrun -T ws reset <vmx> hard` | power_off → power_on |
+| `snapshot_create` | `vmrun -T ws snapshot <vmx> <name>` | Not supported（无操作） |
+| `snapshot_restore` | `vmrun -T ws revertToSnapshot <vmx> <name>` | `ostree admin undeploy` + 重启 |
+| `guest_alive` | `vmrun -T ws list` 输出包含 vmx 路径 | SSH probe |
 
-**VIX 调用方式：**
-- 不直接 `ctypes` 调 `vix.dll`——用 PowerShell COM 封装
-- Python 通过 `subprocess` 调封装函数
-- 所有操作幂等——VM 已开机时 `power_on` 不报错
+**VIX 调用方式（2026-07-18 修订）：**
+- 通过 `vmrun.exe` CLI 驱动（`F:\VMware\VMware Workstation\vmrun.exe`，v1.17.0）
+- 原方案（PowerShell COM `Connect-VIX`）不可行——该 cmdlet 不存在；最终评审时实测确认 vmrun 可用后改用 vmrun
+- 变更操作（power_on/off/reset/snapshot_*）失败时抛异常（fail-loud）；`power_off`/`reset` 对"已关机"的失败视为幂等成功
+- 前置条件：VM 必须预先创建名为 `baseline` 的快照
 
 **裸机 WOL 依赖：**
 - 目标机 MAC 地址（配置文件提供）

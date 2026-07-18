@@ -3,28 +3,41 @@ import subprocess
 import pytest
 
 from kylinbootlab.experiments.power import (
+    VMRUN,
+    PowerControlError,
     TargetPower,
     VixPower,
     WolPower,
     power_backend_factory,
 )
 
+VMX = r"C:\VMs\test.vmx"
+
 
 class FakeSubprocessRun:
-    """Records calls so we can assert command construction without real VIX."""
+    """Records calls so we can assert command construction without real vmrun."""
 
-    def __init__(self, *, returncode: int = 0, stdout: str = "") -> None:
+    def __init__(self, *, returncode: int = 0, stdout: str = "", stderr: str = "") -> None:
         self.calls: list[list[str]] = []
         self.returncode = returncode
         self.stdout = stdout
+        self.stderr = stderr
 
     def __call__(self, args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         self.calls.append(args)
-        return subprocess.CompletedProcess(args, self.returncode, stdout=self.stdout, stderr="")
+        return subprocess.CompletedProcess(
+            args, self.returncode, stdout=self.stdout, stderr=self.stderr
+        )
+
+
+def _assert_vmrun_prefix(cmd: list[str]) -> None:
+    """Every VixPower call is ``<...>/vmrun.exe -T ws <verb> ...``."""
+    assert cmd[0].endswith("vmrun.exe")
+    assert cmd[1:3] == ["-T", "ws"]
 
 
 def test_power_backend_vix_is_registered() -> None:
-    power = power_backend_factory("vix", vmx_path=r"C:\VMs\test.vmx")
+    power = power_backend_factory("vix", vmx_path=VMX)
     assert isinstance(power, VixPower)
 
 
@@ -39,94 +52,159 @@ def test_power_backend_unknown_raises() -> None:
 
 
 def test_vix_power_satisfies_target_power_protocol() -> None:
-    power: TargetPower = VixPower(r"C:\VMs\test.vmx", _runner=FakeSubprocessRun())
+    power: TargetPower = VixPower(VMX, _runner=FakeSubprocessRun())
     assert power.guest_alive() is False
 
 
-def test_vix_power_on_constructs_correct_command() -> None:
+def test_vix_uses_default_vmrun_path() -> None:
     fake_run = FakeSubprocessRun()
-    power = VixPower(r"C:\VMs\test.vmx", _runner=fake_run)
+    power = VixPower(VMX, _runner=fake_run)
+
+    power.power_on()
+
+    assert fake_run.calls[-1][0] == VMRUN
+
+
+def test_vix_vmrun_path_is_configurable() -> None:
+    fake_run = FakeSubprocessRun()
+    power = VixPower(VMX, vmrun_path=r"D:\tools\vmrun.exe", _runner=fake_run)
+
+    power.power_on()
+
+    assert fake_run.calls[-1][0] == r"D:\tools\vmrun.exe"
+
+
+def test_vix_power_on_constructs_vmrun_command() -> None:
+    fake_run = FakeSubprocessRun()
+    power = VixPower(VMX, _runner=fake_run)
 
     power.power_on()
 
     cmd = fake_run.calls[-1]
-    assert cmd[0] == "powershell.exe"
-    assert "Connect-VIX" in " ".join(cmd)
-    assert "PowerOn" in " ".join(cmd)
-    assert r"C:\VMs\test.vmx" in " ".join(cmd)
+    _assert_vmrun_prefix(cmd)
+    assert cmd[3:] == ["start", VMX, "nogui"]
 
 
-def test_vix_snapshot_restore_constructs_correct_command() -> None:
+def test_vix_power_off_constructs_vmrun_command() -> None:
     fake_run = FakeSubprocessRun()
-    power = VixPower(r"C:\VMs\test.vmx", _runner=fake_run)
+    power = VixPower(VMX, _runner=fake_run)
 
-    power.snapshot_restore("baseline")
+    power.power_off()
 
     cmd = fake_run.calls[-1]
-    assert "RevertToSnapshot" in " ".join(cmd)
-    assert "baseline" in " ".join(cmd)
+    _assert_vmrun_prefix(cmd)
+    assert cmd[3:] == ["stop", VMX, "hard"]
 
 
-def test_vix_snapshot_create_constructs_correct_command() -> None:
+def test_vix_reset_constructs_vmrun_command() -> None:
     fake_run = FakeSubprocessRun()
-    power = VixPower(r"C:\VMs\test.vmx", _runner=fake_run)
+    power = VixPower(VMX, _runner=fake_run)
+
+    power.reset()
+
+    cmd = fake_run.calls[-1]
+    _assert_vmrun_prefix(cmd)
+    assert cmd[3:] == ["reset", VMX, "hard"]
+
+
+def test_vix_snapshot_create_constructs_vmrun_command() -> None:
+    fake_run = FakeSubprocessRun()
+    power = VixPower(VMX, _runner=fake_run)
 
     power.snapshot_create("pre-tune")
 
     cmd = fake_run.calls[-1]
-    assert "CreateSnapshot" in " ".join(cmd)
-    assert "pre-tune" in " ".join(cmd)
+    _assert_vmrun_prefix(cmd)
+    assert cmd[3:] == ["snapshot", VMX, "pre-tune"]
 
 
-def test_vix_reset_constructs_correct_command() -> None:
+def test_vix_snapshot_restore_constructs_vmrun_command() -> None:
     fake_run = FakeSubprocessRun()
-    power = VixPower(r"C:\VMs\test.vmx", _runner=fake_run)
+    power = VixPower(VMX, _runner=fake_run)
 
-    power.reset()
+    power.snapshot_restore("baseline")
 
-    assert "Reset" in " ".join(fake_run.calls[-1])
-
-
-def test_vix_power_off_is_idempotent() -> None:
-    """Power off when already off should not crash — just no-op."""
-    fake_run = FakeSubprocessRun()
-    # Simulate echo for guest_alive → powered on
-    # Then power_off
-    power = VixPower(r"C:\VMs\test.vmx", _runner=fake_run)
-
-    # guest_alive returns False (VM off) — power_off should still succeed
-    power.power_off()
-    assert len(fake_run.calls) == 1  # Only one PowerShell call
+    cmd = fake_run.calls[-1]
+    _assert_vmrun_prefix(cmd)
+    assert cmd[3:] == ["revertToSnapshot", VMX, "baseline"]
 
 
-def test_vix_guest_alive_true_when_powered_on() -> None:
-    fake_run = FakeSubprocessRun(stdout="True\n")
-    power = VixPower(r"C:\VMs\test.vmx", _runner=fake_run)
+@pytest.mark.parametrize(
+    ("method", "args"),
+    [
+        ("power_on", ()),
+        ("power_off", ()),
+        ("reset", ()),
+        ("snapshot_create", ("baseline",)),
+        ("snapshot_restore", ("baseline",)),
+    ],
+)
+def test_vix_mutating_op_failure_raises(method: str, args: tuple[str, ...]) -> None:
+    """vmrun non-zero exit on any mutating operation must fail loud."""
+    fake_run = FakeSubprocessRun(returncode=255, stderr="Error: The operation was canceled")
+    power = VixPower(VMX, _runner=fake_run)
+
+    with pytest.raises(PowerControlError, match="vmrun"):
+        getattr(power, method)(*args)
+
+
+def test_vix_power_off_already_off_is_idempotent() -> None:
+    """vmrun stop on an off VM says 'not powered on' — treated as success."""
+    fake_run = FakeSubprocessRun(
+        returncode=255,
+        stdout="Error: The virtual machine is not powered on: " + VMX,
+    )
+    power = VixPower(VMX, _runner=fake_run)
+
+    power.power_off()  # must not raise
+
+    assert len(fake_run.calls) == 1
+
+
+def test_vix_reset_already_off_is_idempotent() -> None:
+    """Same carve-out for reset, and it applies to stderr output too."""
+    fake_run = FakeSubprocessRun(
+        returncode=255,
+        stderr="Error: The virtual machine is not powered on: " + VMX,
+    )
+    power = VixPower(VMX, _runner=fake_run)
+
+    power.reset()  # must not raise
+
+    assert len(fake_run.calls) == 1
+
+
+def test_vix_guest_alive_constructs_list_command() -> None:
+    fake_run = FakeSubprocessRun(stdout="Total running VMs: 0\n")
+    power = VixPower(VMX, _runner=fake_run)
+
+    power.guest_alive()
+
+    cmd = fake_run.calls[-1]
+    _assert_vmrun_prefix(cmd)
+    assert cmd[3:] == ["list"]
+
+
+def test_vix_guest_alive_true_when_vm_listed() -> None:
+    """The vmx path comparison is case-insensitive."""
+    fake_run = FakeSubprocessRun(stdout="Total running VMs: 1\nC:\\VMs\\TEST.VMX\n")
+    power = VixPower(VMX, _runner=fake_run)
 
     assert power.guest_alive() is True
-    assert "IsPoweredOn" in " ".join(fake_run.calls[-1])
 
 
-def test_vix_guest_alive_false_when_powershell_fails() -> None:
-    fake_run = FakeSubprocessRun(returncode=1, stdout="True")
-    power = VixPower(r"C:\VMs\test.vmx", _runner=fake_run)
+def test_vix_guest_alive_false_when_vm_not_listed() -> None:
+    fake_run = FakeSubprocessRun(stdout="Total running VMs: 1\nC:\\VMs\\other.vmx\n")
+    power = VixPower(VMX, _runner=fake_run)
 
     assert power.guest_alive() is False
 
 
-def test_vix_power_on_powershell_syntax_is_valid() -> None:
-    """The generated PowerShell command must parse. Use simple syntax check."""
-    fake_run = FakeSubprocessRun()
-    power = VixPower(r"C:\VMs\openkylin.vmx", _runner=fake_run)
+def test_vix_guest_alive_false_when_vmrun_fails() -> None:
+    fake_run = FakeSubprocessRun(returncode=1, stdout=VMX)
+    power = VixPower(VMX, _runner=fake_run)
 
-    power.power_on()
-
-    script = " ".join(fake_run.calls[-1])
-    assert "powershell.exe" in script
-    assert "-NoProfile" in script
-    assert "-NonInteractive" in script
-    assert "OpenVM" in script
-    assert "PowerOn" in script
+    assert power.guest_alive() is False
 
 
 # -- WolPower tests -----------------------------------------------------------
