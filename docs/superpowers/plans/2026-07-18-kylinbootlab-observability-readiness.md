@@ -15,7 +15,7 @@
 - All Python synchronous. Rust linux-only facilities (`journalctl` spawn, uinput, AT-SPI, `/proc` scan) gated `#[cfg(target_os = "linux")]`; pure-logic cores compile and test on Windows.
 - Timestamps are `monotonic_ns` on the CLOCK_BOOTTIME axis. journald `__MONOTONIC_TIMESTAMP` is **microseconds** → ×1000.
 - `kind` enum (13 values, verbatim): `observer_started / unit_active / greeter_started / greeter_ready / login_injected / session_opened / desktop_process_up / atspi_desktop_ready / sentinel_launched / sentinel_window_shown / usable / observer_timeout / error`. `source`: `journald / systemd / probe / atspi`.
-- Timeouts (spec §8): greeter 90 s; injection→session 30 s (NO re-injection); session→usable 120 s; orchestrator `wait_for_observer_done` 300 s with fast-degrade (single probe of `/var/lib/kylinbootlab/observe/`).
+- Timeouts (spec §8): greeter 90 s; injection→session 30 s (NO re-injection); session→usable 120 s; orchestrator `wait_for_observer_done` 300 s with fast-degrade (single probe of the `/var/lib/kylinbootlab/observe/enabled` marker — absent means the observer is intentionally off for this boot OR was never deployed; either way no done marker will ever appear, so the gate passes immediately).
 - Observer toggling for calibration: `ConditionPathExists=/var/lib/kylinbootlab/observe/enabled` — marker in kbl-group-writable dir, no runtime sudo.
 - Done marker `/var/lib/kylinbootlab/observe/done` **contains the boot_id**; consumers compare with current boot to reject stale markers.
 - Password charset: lowercase letters + digits only.
@@ -265,6 +265,8 @@ Create `tests/fixtures/readiness-events-v1.jsonl` — 13 lines, one realistic be
 {"schema_version":1,"monotonic_ns":18100000000,"kind":"usable","detail":"all three conditions met","source":"probe"}
 ```
 
+The fixture file must end with exactly one trailing newline — Task 8's byte-identity test compares `println!` output against it.
+
 - [ ] **Step 2: Write the failing tests**
 
 Create `tests/test_readiness.py`:
@@ -509,6 +511,8 @@ git commit -m "feat: add ReadinessEvent contract and T-point derivation"
 - Produces: `ObserveConfig { password: String, mode: Mode, target_user: String, sentinel_command: Vec<String>, desktop_processes: Vec<String>, greeter_ready_pattern: String, session_opened_pattern: String }` with `deny_unknown_fields`; `ObserveConfig::from_toml_str(input: &str) -> anyhow::Result<Self>` (rejects empty password, chars outside `[a-z0-9]`, empty sentinel_command); `ObserveConfig::probe_defaults() -> Self` (fallback for the session probe when the root-0600 file is unreadable); manual `Debug` impl that redacts the password.
 
 Defaults: `mode = benchmark`, `target_user = "kbl"`, `sentinel_command = ["mate-terminal"]`, `desktop_processes = []` (populated at deployment — recon had no live graphical session to enumerate), `greeter_ready_pattern = "ukui-greeter"`, `session_opened_pattern = "session opened for user"`. Patterns live in config so acceptance can tune them against the real journal **without recompiling**.
+
+**Spec §6 deviation (v1, deliberate):** v1 diagnostic = interval-only; process-tree snapshots and per-event journal context land with Phase 4 prep (3B deep tracing) where their consumer lives. `Mode::Diagnostic` in this phase changes nothing but the poll interval (500 → 50 ms) — do NOT add capture machinery now.
 
 - [ ] **Step 1: Add the toml dependency**
 
@@ -2015,8 +2019,9 @@ git commit -m "feat: add readiness state machine and observe driver"
 - Produces (atspi, linux): `a11y_bus_address() -> anyhow::Result<String>`; `desktop_child_count(address: &str) -> anyhow::Result<u32>` via `dbus-send --address=<addr> --print-reply --dest=org.a11y.atspi.Registry /org/a11y/atspi/accessible/root org.freedesktop.DBus.Properties.Get string:org.a11y.atspi.Accessible string:ChildCount` (note: `ChildCount` is a **property** of `org.a11y.atspi.Accessible` — the interface has no `GetChildCount` method, hence `Properties.Get` carries the count query). Session env (`DBUS_SESSION_BUS_ADDRESS`, `DISPLAY`) is inherited — the probe runs inside the kbl session.
 - Produces (mod.rs): `run_usable_probe(config_path: &Path, state_dir: &Path) -> anyhow::Result<()>` — linux; non-linux stub bails.
 - **v1 sentinel heuristic (documented):** first window = AT-SPI registry root child-count increase after launching the sentinel (`count_before < count_after`). Exact-name matching of the new child is an acceptance refinement (Task 13).
+- **Session-side start timestamp (spec §4.1):** the first event the probe publishes in `usable-result.jsonl` is `kind="observer_started"`, `source="probe"`, `detail="usable-probe session start"`, stamped with the probe's `started_ns` — this maps the spec's "记录会话侧启动时间戳" line into the event stream instead of keeping it internal. The kind enum is unchanged, and `derive_metrics` takes the FIRST `observer_started` for `mode` (the root observer's, emitted at boot), so this second, later `observer_started` in the merged stream is harmless.
 
-Probe flow: exit 0 immediately if the `enabled` marker is absent (bare group = zero session footprint) → read observe.toml (root 0600 → unreadable as kbl → fall back to `ObserveConfig::probe_defaults()`; the runbook documents `chgrp kbl + chmod 0640` as the opt-in for custom `desktop_processes`) → poll `/proc` until every `desktop_processes` entry runs (`desktop_process_up` per process, detail = process name) → AT-SPI address + child count ≥ 1 (`atspi_desktop_ready`, detail `"N desktop children"`) → launch sentinel (`sentinel_launched`) → poll for child-count increase (`sentinel_window_shown`) → publish `usable-result.jsonl` **atomically** (write `.partial`, rename). On AT-SPI failure: emit `desktop_process_up` with detail `"process group complete (atspi_unavailable)"` and publish (root observer emits the degraded `usable`). On the 120 s deadline: emit `error` with what was still pending, publish partial results.
+Probe flow: exit 0 immediately if the `enabled` marker is absent (bare group = zero session footprint) → read observe.toml (root 0600 → unreadable as kbl → fall back to `ObserveConfig::probe_defaults()`; the runbook documents `chgrp kbl + chmod 0640` as the opt-in for custom `desktop_processes`) → emit `observer_started` (detail `usable-probe session start`) as the result stream's first event → poll `/proc` until every `desktop_processes` entry runs (`desktop_process_up` per process, detail = process name) → AT-SPI address + child count ≥ 1 (`atspi_desktop_ready`, detail `"N desktop children"`) → launch sentinel (`sentinel_launched`) → poll for child-count increase (`sentinel_window_shown`) → publish `usable-result.jsonl` **atomically** (write `.partial`, rename). On AT-SPI failure: emit `desktop_process_up` with detail `"process group complete (atspi_unavailable)"` and publish (root observer emits the degraded `usable`). On the 120 s deadline: emit `error` with what was still pending, publish partial results.
 
 - [ ] **Step 1: Write the failing procscan tests**
 
@@ -2333,6 +2338,16 @@ mod probe {
         let deadline_ns = started_ns + USABLE_TIMEOUT_NS;
         let interval = Duration::from_millis(config.mode.poll_interval_ms());
         let mut events: Vec<ReadinessEvent> = Vec::new();
+
+        // Spec §4.1: session-side start timestamp — first line of the
+        // result file.  derive_metrics keeps the FIRST observer_started
+        // (the root observer's), so this later one never overrides `mode`.
+        events.push(ReadinessEvent::new(
+            EventKind::ObserverStarted,
+            EventSource::Probe,
+            started_ns,
+            "usable-probe session start",
+        ));
 
         // Condition 1: UKUI process group complete (one event per process).
         let mut pending: Vec<String> = config.desktop_processes.clone();
@@ -2759,7 +2774,7 @@ git commit -m "feat: wire observe/usable-probe CLI and readiness-events capture"
 - Modify: `tests/test_experiments_orchestrator.py` (gate patches + new tests)
 
 **Interfaces:**
-- Produces: `wait_for_observer_done(target: str, timeout: float = 300, interval: float = 5) -> bool` — first a SINGLE fast probe `ssh target test -d /var/lib/kylinbootlab/observe`: missing directory means the observer was never deployed → return `True` immediately (fast-degrade, spec §4.3; pre-Phase-3 targets keep working with zero queue noise). Otherwise poll one combined remote test until the `done` file content equals the CURRENT boot_id (`cat /proc/sys/kernel/random/boot_id`) — a stale marker from the previous boot never matches. Timeout → `False`.
+- Produces: `wait_for_observer_done(target: str, timeout: float = 300, interval: float = 5) -> bool` — first a SINGLE fast probe `ssh target test -f /var/lib/kylinbootlab/observe/enabled`: marker absent means the observer is intentionally off for this boot (calibration bare group removes only the marker — the state directory stays, and `ConditionPathExists` keeps the unit from running) OR was never deployed → return `True` immediately (fast-degrade, spec §4.3; the single marker probe covers both cases, so pre-Phase-3 targets and calib-bare boots keep working with zero queue noise). Otherwise poll one combined remote test until the `done` file content equals the CURRENT boot_id (`cat /proc/sys/kernel/random/boot_id`) — a stale marker from the previous boot never matches. Timeout → `False`.
 - Produces (internal): `_ssh_once(target: str, command: list[str]) -> bool`; `_poll_ssh` is refactored on top of it (existing monkeypatches of `aliveness.subprocess.run` keep working unchanged).
 - Modifies: `ExperimentOrchestrator._run_one_experiment` gains step 2c after `wait_for_boot_finished`: gate failure raises `TargetUnreachableError("observer did not finish ...")` → normal retry/recovery path.
 
@@ -2768,10 +2783,10 @@ git commit -m "feat: wire observe/usable-probe CLI and readiness-events capture"
 Append to `tests/test_experiments_orchestrator.py` (below the existing `wait_for_boot_finished` test):
 
 ```python
-def test_wait_for_observer_done_passes_when_not_deployed(
+def test_wait_for_observer_done_passes_when_marker_absent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Missing state dir = observer never deployed: gate passes immediately."""
+    """No enabled marker = observer off or never deployed: gate passes immediately."""
     from kylinbootlab.experiments.aliveness import wait_for_observer_done
 
     commands: list[list[str]] = []
@@ -2787,13 +2802,13 @@ def test_wait_for_observer_done_passes_when_not_deployed(
 
     assert wait_for_observer_done("target.local", timeout=5, interval=0.01) is True
     assert len(commands) == 1  # single fast-degrade probe, no polling
-    assert commands[0][-3:] == ["test", "-d", "/var/lib/kylinbootlab/observe"]
+    assert commands[0][-3:] == ["test", "-f", "/var/lib/kylinbootlab/observe/enabled"]
 
 
 def test_wait_for_observer_done_polls_boot_id_stamped_marker(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Deployed: polls the done-marker/boot_id comparison until it succeeds."""
+    """Enabled: polls the done-marker/boot_id comparison until it succeeds."""
     from kylinbootlab.experiments.aliveness import wait_for_observer_done
 
     commands: list[list[str]] = []
@@ -2803,7 +2818,7 @@ def test_wait_for_observer_done_polls_boot_id_stamped_marker(
         **_kwargs: Any,
     ) -> subprocess.CompletedProcess[str]:
         commands.append(list(args))
-        # Call 1: dir probe succeeds.  Call 2: marker not ready.  Call 3: ready.
+        # Call 1: enabled-marker probe succeeds.  Call 2: done not ready.  Call 3: ready.
         returncode = 0 if len(commands) in (1, 3) else 1
         return subprocess.CompletedProcess(args, returncode, stdout="", stderr="")
 
@@ -2817,7 +2832,7 @@ def test_wait_for_observer_done_polls_boot_id_stamped_marker(
 
 
 def test_wait_for_observer_done_times_out(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Deployed but the done marker never matches: returns False at timeout."""
+    """Enabled but the done marker never matches: returns False at timeout."""
     from kylinbootlab.experiments.aliveness import wait_for_observer_done
 
     call_count = 0
@@ -2828,7 +2843,7 @@ def test_wait_for_observer_done_times_out(monkeypatch: pytest.MonkeyPatch) -> No
     ) -> subprocess.CompletedProcess[str]:
         nonlocal call_count
         call_count += 1
-        returncode = 0 if call_count == 1 else 1  # dir exists, marker never ready
+        returncode = 0 if call_count == 1 else 1  # marker present, done never ready
         return subprocess.CompletedProcess(args, returncode, stdout="", stderr="")
 
     monkeypatch.setattr("kylinbootlab.experiments.aliveness.subprocess.run", fake_run)
@@ -2851,6 +2866,12 @@ import time
 
 #: Observer state directory on the target (kbl-group-writable, Phase 3).
 OBSERVE_STATE_DIR = "/var/lib/kylinbootlab/observe"
+
+#: Enabled marker — also the observer unit's ``ConditionPathExists``.
+#: Absent means the observer is off for this boot (calibration bare group
+#: removes only this marker; the directory stays) or was never deployed;
+#: either way no done marker will ever appear.
+_ENABLED_MARKER = f"{OBSERVE_STATE_DIR}/enabled"
 
 #: Remote test: the done marker exists AND carries the CURRENT boot_id, so
 #: a stale marker left by a previous boot can never satisfy the gate.
@@ -2927,18 +2948,22 @@ def wait_for_observer_done(
 ) -> bool:
     """Gate collection on the Phase 3 observer's boot_id-stamped done marker.
 
-    Fast-degrade (spec §4.3): a single probe of the observer state
-    directory — if it does not exist the observer was never deployed and
-    the gate passes immediately, so pre-Phase-3 targets work unchanged.
+    Fast-degrade (spec §4.3): a single probe of the ``enabled`` marker —
+    absent means the observer will not run this boot, either because it is
+    intentionally off (calibration bare group: the marker is removed but
+    the state directory remains, and ``ConditionPathExists`` keeps the
+    unit from starting) or because it was never deployed.  In both cases
+    no ``done`` marker will ever appear, so the gate passes immediately;
+    one probe covers both, and pre-Phase-3 targets work unchanged.
 
-    When deployed, polls until ``done`` exists and its content equals the
-    current boot_id (stale markers from earlier boots never match).  The
-    300 s default covers the worst-case chain: greeter 90 s + injection
-    30 s + usable 120 s + margin (spec §4.3).  Call only after
-    ``wait_for_boot_finished`` succeeded, so SSH flakiness cannot be
-    mistaken for a missing deployment.
+    When the marker is present, polls until ``done`` exists and its
+    content equals the current boot_id (stale markers from earlier boots
+    never match).  The 300 s default covers the worst-case chain: greeter
+    90 s + injection 30 s + usable 120 s + margin (spec §4.3).  Call only
+    after ``wait_for_boot_finished`` succeeded, so SSH flakiness cannot
+    be mistaken for a missing deployment.
     """
-    if not _ssh_once(target, ["test", "-d", OBSERVE_STATE_DIR]):
+    if not _ssh_once(target, ["test", "-f", _ENABLED_MARKER]):
         return True
     return _poll_ssh(target, [_DONE_MATCHES_BOOT], timeout, interval)
 ```
@@ -2970,8 +2995,9 @@ _OBSERVER_DEADLINE_SECONDS: float = 300.0
 
 ```python
         # 2c. Phase 3 observer gate.  wait_for_observer_done fast-degrades
-        # to True when the observer was never deployed (no state directory),
-        # so pre-Phase-3 targets skip straight to collection.  When deployed,
+        # to True when the enabled marker is absent (observer off for this
+        # boot — e.g. the calibration bare group — or never deployed), so
+        # those boots skip straight to collection.  When enabled,
         # collecting before the boot_id-stamped done marker would truncate
         # the readiness event stream mid-boot.
         if not wait_for_observer_done(self.target, timeout=_OBSERVER_DEADLINE_SECONDS):
@@ -3303,7 +3329,7 @@ git commit -m "feat: add readiness timeline to baseline report"
 
 **Binding scope decision (v1):** two automated groups — `calib-bare` (marker removed via `ssh rm -f .../observe/enabled`) and `calib-benchmark` (`ssh touch` marker; `mode = "benchmark"` is the installed observe.toml default). The **diagnostic** group requires a root edit of observe.toml (`mode = "diagnostic"`), so it stays a documented manual step in the runbook (Task 12); its numbers are recorded, never gated.
 
-**Correctness note (why `MarkerPreservingPower` exists):** the Phase 2 loop restores the `baseline` snapshot before every boot, which would silently revert the on-disk `enabled` marker and turn every group into `bare` (the calibration would trivially "pass" at 0%). The wrapper maps `power_off`/`snapshot_restore` to no-ops so the guest stays up between experiments and the orchestrator's boot step takes the `reset()` branch — a hard reboot that preserves the marker. Both groups boot with identical mechanics, which is exactly what a relative-overhead comparison needs. Group isolation invariant: groups are enqueued lazily and strictly in sequence, so the shared queue never holds pending records of two profiles at once and a group's marker can never leak into the other group's boots. Pass criterion is **signed** delta `< 1.0 %` for BOTH `os_total_ns` and `graphical_target_from_t0_ns` medians (a faster benchmark group passes; missing graphical data fails — the spec metric must be provable).
+**Correctness note (why `MarkerPreservingPower` exists):** the Phase 2 loop restores the `baseline` snapshot before every boot, which would silently revert the on-disk `enabled` marker and turn every group into `bare` (the calibration would trivially "pass" at 0%). The wrapper maps `power_off`/`snapshot_restore` to no-ops so the guest stays up between experiments and the orchestrator's boot step takes the `reset()` branch — a hard reboot that preserves the marker. Both groups boot with identical mechanics, which is exactly what a relative-overhead comparison needs. Group isolation invariant: groups are enqueued lazily and strictly in sequence, so the shared queue never holds pending records of two profiles at once and a group's marker can never leak into the other group's boots. Pass criterion is **signed** delta `< 1.0 %` for BOTH `os_total_ns` and `graphical_target_from_t0_ns` medians (a faster benchmark group passes; missing graphical data fails — the spec metric must be provable). The same no-op mapping weakens layer-1 recovery during calibration — `snapshot_restore` does nothing and `power_on` on a running VM is a no-op, so a hung guest cannot be revived and the record fails once retries exhaust — which is acceptable for calibration because failed runs are excluded from the statistics (`group_stats` already requires completed runs).
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -4215,12 +4241,27 @@ Notes:
 - Calibration boots are guest resets, not snapshot restores — a restore
   would revert the enabled marker (see `calibrate.py` docstring). Journald
   growth over 20 boots affects both groups equally; medians absorb it.
-- Diagnostic group (manual, recorded only, never gated):
-  `sudo sed -i 's/^mode = "benchmark"/mode = "diagnostic"/' /etc/kylinbootlab/observe.toml`,
-  run 10 boots via `kbl experiment queue --profile calib-diagnostic
-  --count 10 --queue-file var/calibration.jsonl` + `kbl experiment run`,
-  then revert the sed. Diagnostic runs are labeled `mode=diagnostic` in
-  their event stream and excluded from formal statistics.
+- Diagnostic group (manual, recorded only, never gated; results are for
+  Phase 4 analysis only). Unlike `kbl calibrate`, a raw `kbl experiment
+  run` powers off and restores the `baseline` snapshot before EVERY boot,
+  so a live edit of observe.toml would be silently reverted on the first
+  restore — the mode edit must be baked into the snapshot first:
+  1. At the VM console (or SSH while the guest is up):
+     `sudo sed -i 's/^mode = "benchmark"/mode = "diagnostic"/' /etc/kylinbootlab/observe.toml`
+  2. Re-create the baseline snapshot AFTER the edit, so every restore
+     boots in diagnostic mode:
+     `vmrun -T ws stop "<path>.vmx" soft`, then
+     `vmrun -T ws deleteSnapshot "<path>.vmx" baseline`, then
+     `vmrun -T ws snapshot "<path>.vmx" baseline`.
+  3. Queue and run with a dedicated queue file (NEVER the default
+     `var/experiments.jsonl`) and an explicit VMX path (the vix backend
+     raises without one):
+     `uv run kbl experiment queue --profile calib-diagnostic --count 10 --queue-file var/diagnostic.jsonl`, then
+     `uv run kbl experiment run --target kbl@<ip> --backend vix --vmx-path "<path>.vmx" --queue-file var/diagnostic.jsonl`.
+  4. Revert: sed the mode back to `"benchmark"`, then repeat step 2 so
+     the baseline snapshot is benchmark-mode again.
+  Diagnostic runs are labeled `mode=diagnostic` in their event stream and
+  excluded from formal statistics.
 
 ## 7. Wrong-password drill (error-path acceptance)
 
@@ -4312,6 +4353,8 @@ Runbook section 7. Expected: `error` event, done marker written, controller mark
 
 Run: `uv run kbl calibrate --target kbl@<ip> --backend vix --vmx-path "<path>.vmx" --per-group 10`
 Expected: exit 0, `CALIBRATION PASS`, `var/calibration-report.json` with both deltas < 1%. Attach the report to the acceptance record.
+
+Optional manual diagnostic group: runbook section 6. Acceptance note (spec §6 deviation): v1 diagnostic = interval-only; process-tree snapshots and per-event journal context land with Phase 4 prep (3B deep tracing) where their consumer lives — do not fail acceptance on their absence.
 
 - [ ] **Step 6: Record expected refinements**
 

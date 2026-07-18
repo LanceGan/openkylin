@@ -110,6 +110,8 @@ JSONL 事件流，Rust/Python 1:1 对齐（延续 Phase 1 契约模式）：
 
 模式写入 `observer_started` 事件的 `detail`；控制端报告标注模式，防止 diagnostic 数据混入正式统计。
 
+v1 实现仅差轮询间隔；进程树快照与每事件 journal 上下文随 Phase 4 前置(3B)交付。
+
 ## 7. 观测开销校准协议（3C）
 
 复用 Phase 2 实验台，三组对照（experiment profile 区分：`bare / benchmark / diagnostic`）：
