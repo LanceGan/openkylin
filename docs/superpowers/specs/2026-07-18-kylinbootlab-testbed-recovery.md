@@ -212,8 +212,8 @@ def wait_for_ssh(target: str, timeout: float, interval: float = 5) -> bool:
 
 ```
 第一层：VIX snapshot restore（仅 VMware）
-  → VixVM_RevertToSnapshot("baseline")
-  → VixVM_PowerOn
+  → vmrun -T ws revertToSnapshot <vmx> baseline
+  → vmrun -T ws start <vmx> nogui
   → 秒级恢复，不依赖 OS
 
 第二层：ostree rollback（跨平台通用）
