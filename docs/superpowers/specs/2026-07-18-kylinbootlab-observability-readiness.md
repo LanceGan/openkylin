@@ -77,7 +77,7 @@ AT-SPI 总线属于用户会话，root 服务访问困难 → 观测器拆两个
 - 事件流作为普通 artifact 随 bundle 校验入仓，`ProbeManifest` schema 不变
 - `required: false` → 未部署观测器的目标照常工作（向后兼容）
 - 编排器新增 `wait_for_observer_done`（轮询 done 标记，与 `wait_for_boot_finished` 同模式），超时 **300 秒**（覆盖最坏情形链：greeter 90s + 注入 30s + usable 120s + 余量）
-- **快速降级路径**：等待前先单次探测 `/var/lib/kylinbootlab/observe/` 目录是否存在——不存在即判定未部署观测器，跳过等待直接采集，实验不判失败；存在才进入 300s 等待
+- **快速降级路径**：等待前先单次探测 `/var/lib/kylinbootlab/observe/enabled` 标记是否存在——标记不存在即判定观测器本次启动有意关闭（校准 bare 组）或未部署，跳过等待直接采集，实验不判失败；标记存在才进入 300s 等待
 
 ### 4.4 控制端
 
