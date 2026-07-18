@@ -128,6 +128,35 @@ def test_wait_for_ssh_returns_true_on_first_success(monkeypatch: pytest.MonkeyPa
     assert result is True
 
 
+def test_wait_for_boot_finished_polls_systemd_analyze(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """wait_for_boot_finished runs `systemd-analyze time` and returns True on rc 0."""
+    from kylinbootlab.experiments.aliveness import wait_for_boot_finished
+
+    commands: list[list[str]] = []
+    call_count = 0
+
+    def fake_run(
+        args: Sequence[str],
+        **_kwargs: Any,
+    ) -> subprocess.CompletedProcess[str]:
+        nonlocal call_count
+        call_count += 1
+        commands.append(list(args))
+        if call_count >= 2:  # first poll: boot not finished yet
+            return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+        return subprocess.CompletedProcess(args, 1, stdout="", stderr="not finished")
+
+    monkeypatch.setattr("kylinbootlab.experiments.aliveness.subprocess.run", fake_run)
+
+    result = wait_for_boot_finished("target.local", timeout=10, interval=0.05)
+
+    assert result is True
+    assert commands[0][-2:] == ["systemd-analyze", "time"]
+    assert call_count == 2
+
+
 # -- error hierarchy ---------------------------------------------------------
 
 
@@ -151,6 +180,10 @@ def test_run_queue_completes_three_experiments(
 
     monkeypatch.setattr(
         "kylinbootlab.experiments.orchestrator.wait_for_ssh",
+        lambda target, timeout=120.0: True,
+    )
+    monkeypatch.setattr(
+        "kylinbootlab.experiments.orchestrator.wait_for_boot_finished",
         lambda target, timeout=120.0: True,
     )
     _patch_collect(monkeypatch, tmp_path)
@@ -259,6 +292,10 @@ def test_run_queue_requeues_experiment_left_running_by_crashed_controller(
         "kylinbootlab.experiments.orchestrator.wait_for_ssh",
         lambda target, timeout=120.0: True,
     )
+    monkeypatch.setattr(
+        "kylinbootlab.experiments.orchestrator.wait_for_boot_finished",
+        lambda target, timeout=120.0: True,
+    )
     _patch_collect(monkeypatch, tmp_path)
 
     power = StubPower()
@@ -287,6 +324,10 @@ def test_run_queue_retry_succeeds_and_clears_stale_error(
 
     monkeypatch.setattr(
         "kylinbootlab.experiments.orchestrator.wait_for_ssh", flaky_wait_for_ssh
+    )
+    monkeypatch.setattr(
+        "kylinbootlab.experiments.orchestrator.wait_for_boot_finished",
+        lambda target, timeout=120.0: True,
     )
 
     restore_calls: list[str] = []
@@ -322,6 +363,10 @@ def test_run_queue_survives_bundle_error_and_continues(
 
     monkeypatch.setattr(
         "kylinbootlab.experiments.orchestrator.wait_for_ssh",
+        lambda target, timeout=120.0: True,
+    )
+    monkeypatch.setattr(
+        "kylinbootlab.experiments.orchestrator.wait_for_boot_finished",
         lambda target, timeout=120.0: True,
     )
 
