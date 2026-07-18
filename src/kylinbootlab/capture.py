@@ -19,6 +19,13 @@ def find_artifact(manifest: ProbeManifest, name: str) -> ArtifactRecord:
 
 
 def load_command_capture(run_path: Path, manifest: ProbeManifest, name: str) -> CommandCapture:
+    """Load and validate one command capture from the run's raw artifacts.
+
+    Raises ``BundleError`` when the capture is missing, its metadata disagrees
+    with the manifest, or a *required* capture has a non-zero exit code.
+    Optional captures with non-zero exit codes are returned but flagged
+    with ``stderr`` containing the failure reason.
+    """
     artifact = find_artifact(manifest, name)
     path = artifact_path(run_path / "raw", artifact.relative_path)
     capture = CommandCapture.model_validate_json(path.read_text(encoding="utf-8"))

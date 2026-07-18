@@ -2,6 +2,7 @@
   "$defs": {
     "ArtifactRecord": {
       "additionalProperties": false,
+      "description": "One captured artifact within a probe snapshot \u2014 metadata and integrity hash.",
       "properties": {
         "command": {
           "items": {
@@ -53,6 +54,7 @@
     },
     "HostInfo": {
       "additionalProperties": false,
+      "description": "Identifies the target machine: hostname, kernel, OS, and architecture.",
       "properties": {
         "architecture": {
           "minLength": 1,
@@ -94,6 +96,7 @@
   "$id": "https://kylinbootlab.dev/schema/probe-manifest-v1.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
+  "description": "Top-level v1 probe snapshot manifest \u2014 binds a run to its artifacts.",
   "properties": {
     "artifacts": {
       "items": {

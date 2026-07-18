@@ -22,6 +22,8 @@ _FACTORS = {
 
 
 class BootMetrics(ContractModel):
+    """Parsed ``systemd-analyze time`` output — durations from T0."""
+
     schema_version: Literal[1] = 1
     run_id: UUID
     kernel_ns: NonNegativeInt
@@ -32,12 +34,22 @@ class BootMetrics(ContractModel):
 
 
 class UnitTiming(ContractModel):
+    """One entry from ``systemd-analyze blame``, ranked longest-first."""
+
     rank: int
     unit: str
     duration_ns: NonNegativeInt
 
 
 def parse_duration_ns(text: str) -> int:
+    """Parse a systemd-analyze duration string into nanoseconds.
+
+    Supports ``min``, ``s``, ``ms``, and ``us`` units with optional decimal
+    values.  Examples: ``"500ms"``, ``"1.250s"``, ``"1min 2.500s"``.
+
+    Raises ``ValueError`` when any non-whitespace text is not a recognised
+    duration token.
+    """
     total = Decimal(0)
     consumed: list[tuple[int, int]] = []
     for match in _TOKEN.finditer(text):

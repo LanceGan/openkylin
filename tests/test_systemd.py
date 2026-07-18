@@ -57,3 +57,65 @@ def test_parse_systemd_blame_ranks_units() -> None:
 def test_parse_duration_rejects_unknown_text() -> None:
     with pytest.raises(ValueError, match="invalid systemd duration"):
         parse_duration_ns("about one second")
+
+
+def test_parse_duration_rejects_partial_match() -> None:
+    with pytest.raises(ValueError, match="invalid systemd duration"):
+        parse_duration_ns("500ms garbage")
+
+
+def test_parse_systemd_time_without_graphical_target() -> None:
+    output = "Startup finished in 1.000s (kernel) + 2.000s (userspace) = 3.000s\n"
+
+    metrics = parse_systemd_time(RUN_ID, output)
+
+    assert metrics.kernel_ns == 1_000_000_000
+    assert metrics.initrd_ns == 0
+    assert metrics.userspace_ns == 2_000_000_000
+    assert metrics.graphical_target_from_t0_ns is None
+
+
+def test_parse_systemd_time_without_initrd() -> None:
+    output = (
+        "Startup finished in 3.000s (kernel) + 4.000s (userspace) = 7.000s\n"
+        "graphical.target reached after 3.250s in userspace.\n"
+    )
+
+    metrics = parse_systemd_time(RUN_ID, output)
+
+    assert metrics.initrd_ns == 0
+    assert metrics.os_total_ns == 7_000_000_000
+    assert metrics.graphical_target_from_t0_ns == 6_250_000_000
+
+
+def test_parse_systemd_blame_empty_output() -> None:
+    units = parse_systemd_blame("")
+
+    assert units == []
+
+
+def test_parse_systemd_blame_whitespace_only() -> None:
+    units = parse_systemd_blame("   \n  \n  ")
+
+    assert units == []
+
+
+def test_parse_systemd_blame_template_units() -> None:
+    units = parse_systemd_blame(
+        "1.250s foo@bar.service\n500ms systemd-journald.service\n"
+    )
+
+    assert len(units) == 2
+    assert units[0].unit == "foo@bar.service"
+
+
+def test_parse_systemd_time_rejects_missing_startup_line() -> None:
+    with pytest.raises(ValueError, match="no startup line"):
+        parse_systemd_time(RUN_ID, "some other output\n")
+
+
+def test_parse_systemd_time_rejects_missing_kernel() -> None:
+    output = "Startup finished in 2.000s (userspace) = 2.000s\n"
+
+    with pytest.raises(ValueError, match="kernel and userspace"):
+        parse_systemd_time(RUN_ID, output)

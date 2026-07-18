@@ -49,34 +49,30 @@ class FakeRunner:
         )
 
 
-def test_transport_commands_are_noninteractive_and_fixed_path() -> None:
-    assert ssh_snapshot_command("kbl@kbl-target.local", RUN_ID) == [
+def test_transport_commands_use_direct_probe_and_noninteractive_ssh() -> None:
+    target = "kbl@kbl-target.local"
+    remote_out = f"/var/lib/kylinbootlab/runs/{RUN_ID}"
+
+    assert ssh_snapshot_command(target, RUN_ID) == [
         "ssh",
-        "-o",
-        "BatchMode=yes",
-        "-o",
-        "ConnectTimeout=15",
-        "-o",
-        "ServerAliveInterval=15",
-        "-o",
-        "ServerAliveCountMax=3",
-        "kbl@kbl-target.local",
-        "sudo",
-        "/usr/local/sbin/kbl-capture-run",
-        str(RUN_ID),
+        "-o", "BatchMode=yes",
+        "-o", "ConnectTimeout=15",
+        "-o", "ServerAliveInterval=15",
+        "-o", "ServerAliveCountMax=3",
+        target,
+        "/usr/local/bin/kbl-bootprobe",
+        "snapshot",
+        "--run-id", str(RUN_ID),
+        "--output", remote_out,
     ]
-    assert scp_command("kbl@kbl-target.local", RUN_ID, Path("incoming")) == [
+    assert scp_command(target, RUN_ID, Path("incoming")) == [
         "scp",
-        "-o",
-        "BatchMode=yes",
-        "-o",
-        "ConnectTimeout=15",
-        "-o",
-        "ServerAliveInterval=15",
-        "-o",
-        "ServerAliveCountMax=3",
+        "-o", "BatchMode=yes",
+        "-o", "ConnectTimeout=15",
+        "-o", "ServerAliveInterval=15",
+        "-o", "ServerAliveCountMax=3",
         "-r",
-        f"kbl@kbl-target.local:/var/lib/kylinbootlab/runs/{RUN_ID}",
+        f"{target}:{remote_out}",
         "incoming",
     ]
 
@@ -115,6 +111,24 @@ def test_snapshot_failure_imports_diagnostics_then_raises(tmp_path: Path) -> Non
     assert store.run_path(RUN_ID).is_dir()
 
 
+def test_bundle_already_exists_is_rejected(tmp_path: Path) -> None:
+    bundle = create_probe_bundle(tmp_path / "remote", run_id=RUN_ID)
+    runner = FakeRunner(bundle)
+    store = RunStore(tmp_path / "runs")
+    incoming = tmp_path / "incoming"
+    incoming.mkdir()
+    (incoming / str(RUN_ID)).mkdir()  # pre-create the bundle path
+
+    with pytest.raises(RemoteCollectionError, match="already exists"):
+        collect_target_run(
+            target="kbl@kbl-target.local",
+            run_id=RUN_ID,
+            incoming_root=incoming,
+            store=store,
+            runner=runner,
+        )
+
+
 def test_scp_failure_does_not_create_a_stored_run(tmp_path: Path) -> None:
     bundle = create_probe_bundle(tmp_path / "remote", run_id=RUN_ID)
     runner = FakeRunner(bundle, scp_returncode=1)
@@ -130,3 +144,14 @@ def test_scp_failure_does_not_create_a_stored_run(tmp_path: Path) -> None:
         )
 
     assert not store.run_path(RUN_ID).exists()
+
+
+def test_target_starting_with_dash_is_rejected() -> None:
+    with pytest.raises(RemoteCollectionError, match="must not start with"):
+        collect_target_run(
+            target="-oProxyCommand=evil",
+            run_id=RUN_ID,
+            incoming_root=Path("/tmp"),
+            store=RunStore(Path("/tmp/runs")),
+            runner=FakeRunner(Path("/tmp")),
+        )
