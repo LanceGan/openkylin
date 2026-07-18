@@ -28,10 +28,10 @@ class SubprocessRunner:
 def ssh_snapshot_command(target: str, run_id: UUID) -> list[str]:
     return [
         "ssh",
-        "-o",
-        "BatchMode=yes",
-        "-o",
-        "ConnectTimeout=15",
+        "-o", "BatchMode=yes",
+        "-o", "ConnectTimeout=15",
+        "-o", "ServerAliveInterval=15",
+        "-o", "ServerAliveCountMax=3",
         target,
         "sudo",
         "/usr/local/sbin/kbl-capture-run",
@@ -42,10 +42,10 @@ def ssh_snapshot_command(target: str, run_id: UUID) -> list[str]:
 def scp_command(target: str, run_id: UUID, incoming_root: Path) -> list[str]:
     return [
         "scp",
-        "-o",
-        "BatchMode=yes",
-        "-o",
-        "ConnectTimeout=15",
+        "-o", "BatchMode=yes",
+        "-o", "ConnectTimeout=15",
+        "-o", "ServerAliveInterval=15",
+        "-o", "ServerAliveCountMax=3",
         "-r",
         f"{target}:/var/lib/kylinbootlab/runs/{run_id}",
         str(incoming_root),

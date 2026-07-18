@@ -55,6 +55,24 @@ def test_probe_manifest_rejects_unknown_field() -> None:
         ProbeManifest.model_validate(data)
 
 
+@pytest.mark.parametrize(
+    "bad_path",
+    [
+        "captures/C:outside.json",
+        "a:b/c.json",
+        "captures/D:evil.json",
+    ],
+)
+def test_relative_path_rejects_colon_in_any_segment(bad_path: str) -> None:
+    data = fixture_data()
+    artifacts = data["artifacts"]
+    assert isinstance(artifacts, list)
+    artifacts[0]["relative_path"] = bad_path
+
+    with pytest.raises(ValidationError, match="relative_path"):
+        ProbeManifest.model_validate(data)
+
+
 def test_generated_schema_is_current() -> None:
     subprocess.run(
         [sys.executable, "scripts/export_schema.py", "--check"],

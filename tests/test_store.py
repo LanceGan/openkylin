@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from kylinbootlab.store import BundleError, RunStore
+from kylinbootlab.store import BundleError, RunStore, artifact_path
 from tests.helpers import RUN_ID, create_probe_bundle
 
 
@@ -72,3 +72,39 @@ def test_ingest_rejects_size_mismatch(tmp_path: Path) -> None:
 
     with pytest.raises(BundleError, match="size mismatch"):
         RunStore(tmp_path / "runs").ingest(bundle)
+
+
+def test_artifact_path_rejects_escape_via_containment(tmp_path: Path) -> None:
+    root = tmp_path / "bundle"
+    root.mkdir()
+
+    # The contracts validator rejects ".." segments, but artifact_path's
+    # containment check provides defense-in-depth. Test with a path that
+    # joinpath would resolve above root.
+    with pytest.raises(BundleError, match="artifact path escapes bundle"):
+        artifact_path(root, "../../outside.json")
+
+
+def test_ingest_cleans_up_incoming_on_verification_failure(tmp_path: Path) -> None:
+    bundle = create_probe_bundle(tmp_path / "source")
+    # Tamper with an artifact AFTER copy by crafting a manifest with wrong checksum
+    import json
+
+    manifest_path = bundle / "probe-manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["artifacts"][0]["sha256"] = "0" * 64
+    manifest_path.write_text(
+        json.dumps(manifest, indent=2) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    store = RunStore(tmp_path / "runs")
+
+    with pytest.raises(BundleError, match="checksum mismatch"):
+        store.ingest(bundle)
+
+    # Verify no partial state — destination was never created
+    assert not (tmp_path / "runs" / str(RUN_ID)).exists()
+    # Verify incoming staging was cleaned up
+    incoming = tmp_path / "runs" / f".incoming-{RUN_ID}"
+    assert not incoming.exists()

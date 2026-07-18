@@ -36,6 +36,7 @@ pub fn parse_os_release(input: &str) -> BTreeMap<String, String> {
 fn command_stdout(program: &str, args: &[&str]) -> Result<String> {
     let output = Command::new(program)
         .args(args)
+        .env("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
         .env("LC_ALL", "C")
         .output()
         .with_context(|| format!("failed to execute {program}"))?;
