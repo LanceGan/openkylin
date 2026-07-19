@@ -83,21 +83,24 @@ class CausalGraphBuilder:
             if ev.kind not in by_kind:
                 by_kind[ev.kind] = ev
 
-        # Build chain following _READINESS_CHAIN order
-        chain: list[tuple[str, int]] = []  # (kind, monotonic_ns)
-        for kind in _READINESS_CHAIN:
-            if kind in by_kind:
-                chain.append((kind, by_kind[kind].monotonic_ns))
+        # Build chain sorted by monotonic timestamp (real events may not
+        # follow the ideal _READINESS_CHAIN order).
+        chain: list[tuple[str, int]] = [
+            (kind, by_kind[kind].monotonic_ns)
+            for kind in _READINESS_CHAIN
+            if kind in by_kind
+        ]
+        chain.sort(key=lambda item: item[1])
 
         if len(chain) < 2:
             return  # need at least two events for a meaningful chain
 
-        # Add nodes with delta-blame
+        # Add nodes with delta-blame (non-negative, clamped)
         prev_ns: int | None = None
         for i, (kind, ns) in enumerate(chain):
             blame_ns = 0
             if i < len(chain) - 1:
-                blame_ns = chain[i + 1][1] - ns
+                blame_ns = max(0, chain[i + 1][1] - ns)
             node = CausalNode(name=kind, blame_ns=blame_ns, layer="readiness")
             if kind not in g.nodes:
                 g.add_node(node)
