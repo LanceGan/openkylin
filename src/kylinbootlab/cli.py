@@ -273,11 +273,39 @@ def cmd_analyze(
     rid = UUID(run_id)
     manifest = store.load_manifest(rid)
 
-    # Load DOT from capture artifact
-    dot_capture = load_command_capture(
-        store.run_path(rid), manifest, "systemd-critical-chain"
-    )
-    dot_text = dot_capture.stdout
+    # Load DOT from capture artifact, or fetch on-demand from target
+    dot_text = ""
+    for artifact_name in ("systemd-dot", "systemd-critical-chain"):
+        try:
+            dot_capture = load_command_capture(
+                store.run_path(rid), manifest, artifact_name
+            )
+            dot_text = dot_capture.stdout
+            if "digraph" in dot_text:
+                break
+            dot_text = ""
+        except Exception:
+            continue
+    if not dot_text or "digraph" not in dot_text:
+        # Not captured at snapshot time — try SSH to fetch DOT from target
+        logger.info("No DOT artifact in store; fetching via SSH from target")
+        try:
+            import subprocess
+            manifest = store.load_manifest(rid)
+            target = manifest.host.hostname
+            result = subprocess.run(
+                ["ssh", "-o", "BatchMode=yes", f"kbl@{target}.local", "/usr/local/bin/kbl-dot-capture"],
+                capture_output=True, text=True, timeout=15, check=False,
+            )
+            if result.returncode == 0:
+                dot_text = result.stdout
+            else:
+                dot_text = ""
+        except Exception:
+            dot_text = ""
+
+    if not dot_text.strip():
+        raise typer.BadParameter("No DOT data available — systemd-dot capture absent and SSH fetch failed")
 
     # Load blame
     blame_capture = load_command_capture(
