@@ -1,10 +1,12 @@
+import json
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from kylinbootlab.cli import app
 from kylinbootlab.experiments.queue import ExperimentQueue
-from tests.helpers import RUN_ID, create_probe_bundle
+from tests.helpers import RUN_ID, CaptureFixture, create_probe_bundle
 
 runner = CliRunner()
 
@@ -108,3 +110,125 @@ def test_experiment_reset_command(tmp_path: Path) -> None:
     assert result.exit_code == 0
     assert all(record.status == "pending" for record in q.list())
     assert all(record.error is None for record in q.list())
+
+
+# --- kbl analyze smoke tests ---
+
+DOT_STDOUT = """\
+strict digraph systemd {
+    "basic.target"->"sysinit.target";
+    "sysinit.target"->"dbus.service";
+    "dbus.service"->"NetworkManager.service";
+    "NetworkManager.service"->"lightdm.service";
+    "lightdm.service"->"graphical.target";
+}
+"""
+
+READINESS_STDOUT = "\n".join(
+    [
+        '{"schema_version":1,"monotonic_ns":10000000000,'
+        '"kind":"greeter_started","detail":"lightdm","source":"journald"}',
+        '{"schema_version":1,"monotonic_ns":12000000000,'
+        '"kind":"greeter_ready","detail":"ukui-greeter","source":"journald"}',
+        '{"schema_version":1,"monotonic_ns":13000000000,'
+        '"kind":"login_injected","detail":"uinput","source":"probe"}',
+        '{"schema_version":1,"monotonic_ns":15000000000,'
+        '"kind":"session_opened","detail":"kbl","source":"journald"}',
+        '{"schema_version":1,"monotonic_ns":20000000000,'
+        '"kind":"desktop_process_up","detail":"ukui-panel","source":"probe"}',
+        '{"schema_version":1,"monotonic_ns":21000000000,'
+        '"kind":"atspi_desktop_ready","detail":"3 children","source":"atspi"}',
+        '{"schema_version":1,"monotonic_ns":22000000000,'
+        '"kind":"sentinel_launched","detail":"mate-terminal","source":"probe"}',
+        '{"schema_version":1,"monotonic_ns":24000000000,'
+        '"kind":"sentinel_window_shown",'
+        '"detail":"mate-terminal window","source":"atspi"}',
+        '{"schema_version":1,"monotonic_ns":24000000000,'
+        '"kind":"usable","detail":"all three","source":"probe"}',
+    ]
+)
+
+DOT_DOC: CaptureFixture = {
+    "command": ["systemd-analyze", "--no-pager", "dot", "--order"],
+    "exit_code": 0,
+    "stdout": DOT_STDOUT,
+    "stderr": "",
+}
+
+READINESS_DOC: CaptureFixture = {
+    "command": ["kbl-bootprobe", "observe"],
+    "exit_code": 0,
+    "stdout": READINESS_STDOUT,
+    "stderr": "",
+}
+
+
+def test_analyze_without_readiness(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """kbl analyze succeeds on a bundle with DOT + blame but no readiness artifact."""
+    from uuid import UUID
+
+    from kylinbootlab.store import RunStore
+
+    data_root = tmp_path / "runs"
+    data_root.mkdir()
+    store = RunStore(data_root)
+    bundle = create_probe_bundle(
+        tmp_path, optional_captures={"systemd-critical-chain": DOT_DOC}
+    )
+    run_path = store.ingest(bundle)
+    run_id = UUID(run_path.name)
+
+    result = runner.invoke(
+        app, ["analyze", str(run_id), "--data-root", str(data_root)]
+    )
+    assert result.exit_code == 0, f"CLI failed: {result.output}"
+    # Check derived files exist
+    derived = store.run_path(run_id) / "derived"
+    assert (derived / "causal-graph.json").exists()
+    assert (derived / "bottleneck-report.json").exists()
+
+    # Validate JSON structure
+    cg = json.loads((derived / "causal-graph.json").read_text())
+    assert "graph" in cg
+    assert "nodes" in cg["graph"]
+    assert "edges" in cg["graph"]
+    br = json.loads((derived / "bottleneck-report.json").read_text())
+    assert isinstance(br, list)
+
+
+def test_analyze_with_readiness(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """kbl analyze includes readiness layer when readiness-events is present."""
+    from uuid import UUID
+
+    from kylinbootlab.store import RunStore
+
+    data_root = tmp_path / "runs"
+    data_root.mkdir()
+    store = RunStore(data_root)
+    bundle = create_probe_bundle(
+        tmp_path,
+        optional_captures={
+            "systemd-critical-chain": DOT_DOC,
+            "readiness-events": READINESS_DOC,
+        },
+    )
+    run_path = store.ingest(bundle)
+    run_id = UUID(run_path.name)
+
+    result = runner.invoke(
+        app, ["analyze", str(run_id), "--data-root", str(data_root)]
+    )
+    assert result.exit_code == 0
+    derived = store.run_path(run_id) / "derived"
+    cg = json.loads((derived / "causal-graph.json").read_text())
+    # readiness layer nodes should be present
+    node_names = list(cg["graph"]["nodes"].keys())
+    assert any("greeter" in n for n in node_names) or any("usable" in n for n in node_names)
+
+
+def test_analyze_nonexistent_run_id(tmp_path: Path) -> None:
+    """CLI should error on nonexistent run ID."""
+    result = runner.invoke(
+        app, ["analyze", "00000000-0000-0000-0000-000000000000", "--data-root", str(tmp_path)]
+    )
+    assert result.exit_code != 0

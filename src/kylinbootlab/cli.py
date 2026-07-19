@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 from uuid import UUID, uuid4
 
 import typer
@@ -15,6 +17,9 @@ from kylinbootlab.experiments.queue import ExperimentQueue
 from kylinbootlab.remote import SubprocessRunner, collect_target_run
 from kylinbootlab.report import write_baseline_report
 from kylinbootlab.store import RunStore
+
+if TYPE_CHECKING:
+    from kylinbootlab.analysis.graph import CausalGraph
 
 app = typer.Typer(no_args_is_help=True)
 DataRoot = Annotated[Path, typer.Option(help="Immutable KylinBootLab run root")]
@@ -225,3 +230,129 @@ def reset(
     """Reset all experiments with a given status back to pending."""
     ExperimentQueue(queue_file).reset(status=status_filter, new_status="pending")
     typer.echo(f"reset all '{status_filter}' -> pending")
+
+
+# -- Phase 4 analyze command --------------------------------------------------
+
+
+def _resolve_analysis_sink(graph: CausalGraph) -> str | None:
+    """Determine the sink node for critical path / bottleneck analysis.
+
+    Prefers ``usable`` when the readiness layer is present, otherwise picks
+    the first systemd-layer node with no outgoing edges.
+    """
+    if "usable" in graph.nodes:
+        return "usable"
+    sinks = [n for n in graph.nodes if not graph.successors(n)]
+    if sinks:
+        return sinks[0]
+    return next(iter(graph.nodes), None)
+
+
+@app.command("analyze")
+def cmd_analyze(
+    run_id: str = typer.Argument(..., help="Run UUID to analyze"),
+    data_root: DataRoot = Path("var/runs"),  # noqa: B008
+) -> None:
+    """Build causal graph and bottleneck report from a captured boot run."""
+    import json
+    import logging
+    from uuid import UUID
+
+    from kylinbootlab.analysis.bottleneck import rank_bottlenecks
+    from kylinbootlab.analysis.builder import CausalGraphBuilder
+    from kylinbootlab.analysis.critical_path import critical_path
+    from kylinbootlab.capture import load_command_capture
+    from kylinbootlab.readiness import parse_events
+    from kylinbootlab.store import RunStore
+    from kylinbootlab.systemd import parse_systemd_blame
+
+    logger = logging.getLogger(__name__)
+
+    store = RunStore(data_root)
+    rid = UUID(run_id)
+    manifest = store.load_manifest(rid)
+
+    # Load DOT from capture artifact
+    dot_capture = load_command_capture(
+        store.run_path(rid), manifest, "systemd-critical-chain"
+    )
+    dot_text = dot_capture.stdout
+
+    # Load blame
+    blame_capture = load_command_capture(
+        store.run_path(rid), manifest, "systemd-blame"
+    )
+    blame_list = parse_systemd_blame(blame_capture.stdout)
+
+    # Load readiness (optional — absent = empty list)
+    readiness_events = []
+    try:
+        readiness_capture = load_command_capture(
+            store.run_path(rid), manifest, "readiness-events"
+        )
+        readiness_events = parse_events(readiness_capture.stdout)
+    except Exception:
+        logger.info(
+            "No readiness-events artifact found — readiness layer will be empty"
+        )
+
+    # Build graph
+    builder = CausalGraphBuilder()
+    graph = builder.build(dot_text, blame_list, readiness_events or None)
+
+    # Determine sink for critical path / bottleneck analysis
+    sink = _resolve_analysis_sink(graph)
+
+    # Compute critical path
+    cp: list[str] = []
+    cp_length_ns = 0
+    if sink is not None:
+        try:
+            cp = critical_path(graph, sink=sink)
+            cp_length_ns = sum(graph.nodes[n].blame_ns for n in cp)
+        except ValueError:
+            logger.warning("Could not compute critical path to sink '%s'", sink)
+
+    # Rank bottlenecks
+    bottlenecks = rank_bottlenecks(graph, sink=sink, top_k=10) if sink else []
+
+    # Write derived files
+    derived_dir = store.derived_path(rid)
+    derived_dir.mkdir(parents=True, exist_ok=True)
+
+    cg_out = {
+        "run_id": str(rid),
+        "node_count": len(graph.nodes),
+        "edge_count": len(graph.edges),
+        "critical_path": cp,
+        "critical_path_length_ns": cp_length_ns,
+        "graph": graph.to_json_dict(),
+    }
+    (derived_dir / "causal-graph.json").write_text(
+        json.dumps(cg_out, indent=2), encoding="utf-8"
+    )
+
+    br_out = [b.model_dump() for b in bottlenecks]
+    (derived_dir / "bottleneck-report.json").write_text(
+        json.dumps(br_out, indent=2), encoding="utf-8"
+    )
+
+    logger.info(
+        "Analyzed run %s: %d nodes, %d edges, cp_length=%.3fs, top_bottleneck=%s",
+        run_id,
+        len(graph.nodes),
+        len(graph.edges),
+        cp_length_ns / 1e9,
+        bottlenecks[0].node if bottlenecks else "none",
+    )
+    print(f"Critical path: {' -> '.join(cp)}")
+    print(
+        f"Critical path length: {cp_length_ns / 1e9:.3f}s"
+    )
+    print(
+        f"Top bottleneck: {bottlenecks[0].node} (score={bottlenecks[0].score})"
+        if bottlenecks
+        else "No bottlenecks found"
+    )
+    print(f"Reports written to {derived_dir}")
