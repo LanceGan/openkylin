@@ -1,9 +1,14 @@
-//! AT-SPI desktop checks via `busctl` / `dbus-send` subprocesses.
+//! AT-SPI desktop checks via `busctl` subprocess.
 //!
-//! No native D-Bus dependency: the probe shells out and parses the textual
-//! replies with the pure functions below (unit-tested cross-platform).
+//! No native D-Bus dependency: the probe shells out to `busctl` and parses
+//! its textual output with the pure functions below (unit-tested cross-platform).
 //! The probe runs inside the kbl session, so `DBUS_SESSION_BUS_ADDRESS`
 //! and `XDG_RUNTIME_DIR` are inherited from the session environment.
+//!
+//! v1 limitation: sentinel detection uses a child-count increase heuristic
+//! rather than per-child name matching.  The acceptance refinement (Task 13
+//! runbook) documents when and how to replace it with `busctl get-property`
+//! per-child `Name` enumeration.
 
 /// Extract the a11y bus address from
 /// `busctl --user --json=short call org.a11y.Bus /org/a11y/bus org.a11y.Bus GetAddress`.
@@ -14,13 +19,19 @@ pub fn parse_bus_address(json_reply: &str) -> Option<String> {
     address.starts_with("unix:").then(|| address.to_owned())
 }
 
-/// Extract the child count from a `dbus-send --print-reply` reply — the
-/// last integer token, e.g. `   variant       int32 3`.
+/// Extract the child count from a `busctl get-property` reply — the
+/// integer after the D-Bus type prefix, e.g. `"i 11"` or `"i 3"`.
 pub fn parse_child_count(reply: &str) -> Option<u32> {
     reply
-        .split_whitespace()
-        .rev()
-        .find_map(|token| token.parse().ok())
+        .trim()
+        .strip_prefix("i ")
+        .or_else(|| {
+            reply
+                .split_whitespace()
+                .last()
+                .and_then(|s| if s == "i" { Some("") } else { None })
+        })
+        .and_then(|digits| digits.trim().parse().ok())
 }
 
 #[cfg(target_os = "linux")]
@@ -51,20 +62,21 @@ mod calls {
     }
 
     /// Number of applications registered on the AT-SPI registry root.
-    /// `ChildCount` is a property of `org.a11y.atspi.Accessible` (the
-    /// interface has no `GetChildCount` method), hence `Properties.Get`.
+    ///
+    /// Uses `busctl get-property` (not `dbus-send`): on openKylin SP2 the
+    /// latter cannot reach the AT-SPI bus while `busctl --address=` works
+    /// reliably from within the session environment.
     pub fn desktop_child_count(address: &str) -> Result<u32> {
-        let address_arg = format!("--address={address}");
         let capture = run_command(
-            "dbus-send",
+            "busctl",
             &[
-                &address_arg,
-                "--print-reply",
-                "--dest=org.a11y.atspi.Registry",
+                "--address",
+                address,
+                "get-property",
+                "org.a11y.atspi.Registry",
                 "/org/a11y/atspi/accessible/root",
-                "org.freedesktop.DBus.Properties.Get",
-                "string:org.a11y.atspi.Accessible",
-                "string:ChildCount",
+                "org.a11y.atspi.Accessible",
+                "ChildCount",
             ],
         );
         if capture.exit_code != 0 {
@@ -98,22 +110,22 @@ mod tests {
     }
 
     #[test]
-    fn parses_dbus_send_child_count_reply() {
-        let reply = concat!(
-            "method return time=1721288.123 sender=:1.5 -> destination=:1.42 ",
-            "serial=42 reply_serial=2\n",
-            "   variant       int32 3\n",
-        );
-        assert_eq!(parse_child_count(reply), Some(3));
+    fn parses_busctl_get_property_child_count() {
+        // Real output from VM acceptance: `busctl get-property ... ChildCount` → `i 11`
+        assert_eq!(parse_child_count("i 11"), Some(11));
+        assert_eq!(parse_child_count("i 3\n"), Some(3));
+        assert_eq!(parse_child_count("i 0"), Some(0));
     }
 
     #[test]
-    fn child_count_of_zero_parses() {
-        assert_eq!(parse_child_count("   variant       int32 0\n"), Some(0));
+    fn child_count_tolerates_whitespace() {
+        assert_eq!(parse_child_count("  i 7  \n"), Some(7));
     }
 
     #[test]
     fn unparseable_reply_yields_none() {
         assert_eq!(parse_child_count("no numbers here"), None);
+        assert_eq!(parse_child_count(""), None);
+        assert_eq!(parse_child_count("Error: No reply"), None);
     }
 }
