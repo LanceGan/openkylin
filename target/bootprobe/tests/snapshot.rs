@@ -1,6 +1,6 @@
 use chrono::{TimeZone, Utc};
 use kbl_bootprobe::model::HostInfo;
-use kbl_bootprobe::snapshot::{CaptureSpec, SnapshotContext, capture_snapshot};
+use kbl_bootprobe::snapshot::{CaptureSpec, SnapshotContext, capture_snapshot, default_capture_specs};
 use tempfile::tempdir;
 use uuid::Uuid;
 
@@ -81,4 +81,21 @@ fn snapshot_fails_when_required_capture_has_nonzero_exit() {
     assert!(error.to_string().contains("required captures failed"));
     // Manifest should still be written for diagnostics
     assert!(output.join("probe-manifest.json").is_file());
+}
+
+#[test]
+fn default_specs_include_optional_readiness_events() {
+    let specs = default_capture_specs();
+    let readiness = specs
+        .iter()
+        .find(|spec| spec.name == "readiness-events")
+        .expect("readiness-events spec present");
+    assert!(!readiness.required, "must stay optional for observer-less targets");
+    assert_eq!(
+        readiness.command,
+        vec![
+            "cat".to_owned(),
+            "/var/lib/kylinbootlab/observe/current.jsonl".to_owned(),
+        ]
+    );
 }
