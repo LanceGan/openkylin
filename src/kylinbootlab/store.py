@@ -137,6 +137,10 @@ class RunStore:
     def run_path(self, run_id: UUID) -> Path:
         return self.root / str(run_id)
 
+    def derived_path(self, run_id: UUID) -> Path:
+        """Return the derived/ subdirectory for a run."""
+        return self.run_path(run_id) / "derived"
+
     def load_manifest(self, run_id: UUID) -> ProbeManifest:
         path = self.run_path(run_id) / "manifest.json"
         try:
