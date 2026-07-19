@@ -37,13 +37,24 @@ CAPTURES: dict[str, CaptureFixture] = {
 }
 
 
-def create_probe_bundle(root: Path, run_id: UUID = RUN_ID) -> Path:
+def create_probe_bundle(
+    root: Path,
+    run_id: UUID = RUN_ID,
+    optional_captures: dict[str, CaptureFixture] | None = None,
+) -> Path:
     bundle = root / "bundle"
     captures = bundle / "captures"
     captures.mkdir(parents=True)
     artifacts: list[ArtifactRecord] = []
 
-    for name, document in CAPTURES.items():
+    documents: list[tuple[str, CaptureFixture, bool]] = [
+        (name, document, True) for name, document in CAPTURES.items()
+    ]
+    documents.extend(
+        (name, document, False)
+        for name, document in (optional_captures or {}).items()
+    )
+    for name, document, required in documents:
         encoded = (json.dumps(document, indent=2, sort_keys=True) + "\n").encode()
         relative_path = f"captures/{name}.json"
         (bundle / relative_path).write_bytes(encoded)
@@ -55,7 +66,7 @@ def create_probe_bundle(root: Path, run_id: UUID = RUN_ID) -> Path:
                 size_bytes=len(encoded),
                 command=document["command"],
                 exit_code=document["exit_code"],
-                required=True,
+                required=required,
             )
         )
 
