@@ -52,3 +52,45 @@ fn garbage_lines_yield_none() {
         parse_journal_json(r#"{"__MONOTONIC_TIMESTAMP":"x","MESSAGE":"bad"}"#).is_none()
     );
 }
+
+mod keymap_tests {
+    use kbl_bootprobe::observe::keymap::{keycode_for, login_keycodes, KEY_ENTER};
+
+    #[test]
+    fn maps_letters_and_digits_to_evdev_codes() {
+        // Values from <linux/input-event-codes.h>.
+        let cases = [
+            ('a', 30),
+            ('s', 31),
+            ('l', 38),
+            ('z', 44),
+            ('m', 50),
+            ('q', 16),
+            ('p', 25),
+            ('1', 2),
+            ('9', 10),
+            ('0', 11),
+        ];
+        for (character, expected) in cases {
+            assert_eq!(keycode_for(character), Some(expected), "char {character:?}");
+        }
+    }
+
+    #[test]
+    fn rejects_unsupported_characters() {
+        for character in ['A', 'Z', '!', ' ', '-', '_', '\u{e9}'] {
+            assert_eq!(keycode_for(character), None, "char {character:?}");
+        }
+    }
+
+    #[test]
+    fn login_sequence_is_password_then_enter() {
+        let codes = login_keycodes("kbl123").unwrap();
+        assert_eq!(codes, vec![37, 48, 38, 2, 3, 4, KEY_ENTER]);
+    }
+
+    #[test]
+    fn login_sequence_rejects_bad_charset() {
+        assert!(login_keycodes("Pass!").is_none());
+    }
+}
