@@ -1,0 +1,13 @@
+{"schema_version":1,"monotonic_ns":3000000000,"kind":"observer_started","detail":"mode=benchmark","source":"probe"}
+{"schema_version":1,"monotonic_ns":6613388000,"kind":"greeter_started","detail":"lightdm start begin","source":"journald"}
+{"schema_version":1,"monotonic_ns":7000000000,"kind":"unit_active","detail":"dbus.service","source":"systemd"}
+{"schema_version":1,"monotonic_ns":7100000000,"kind":"unit_active","detail":"NetworkManager.service","source":"systemd"}
+{"schema_version":1,"monotonic_ns":7200000000,"kind":"unit_active","detail":"lightdm.service","source":"systemd"}
+{"schema_version":1,"monotonic_ns":8500000000,"kind":"greeter_ready","detail":"ukui-greeter first output","source":"journald"}
+{"schema_version":1,"monotonic_ns":9000000000,"kind":"login_injected","detail":"password+enter via uinput","source":"probe"}
+{"schema_version":1,"monotonic_ns":11500000000,"kind":"session_opened","detail":"session opened for user kbl","source":"journald"}
+{"schema_version":1,"monotonic_ns":16000000000,"kind":"desktop_process_up","detail":"ukui-panel","source":"probe"}
+{"schema_version":1,"monotonic_ns":16500000000,"kind":"atspi_desktop_ready","detail":"3 desktop children","source":"atspi"}
+{"schema_version":1,"monotonic_ns":16600000000,"kind":"sentinel_launched","detail":"mate-terminal","source":"probe"}
+{"schema_version":1,"monotonic_ns":18100000000,"kind":"sentinel_window_shown","detail":"mate-terminal window","source":"atspi"}
+{"schema_version":1,"monotonic_ns":18100000000,"kind":"usable","detail":"all three conditions met","source":"probe"}
