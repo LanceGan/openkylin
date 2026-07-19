@@ -7,6 +7,7 @@ from uuid import UUID, uuid4
 import typer
 
 from kylinbootlab import __version__
+from kylinbootlab.calibrate import run_calibration
 from kylinbootlab.experiments.contracts import ExperimentRecord
 from kylinbootlab.experiments.orchestrator import ExperimentOrchestrator
 from kylinbootlab.experiments.power import power_backend_factory
@@ -68,6 +69,70 @@ def collect(
         remote_dir=remote_dir,
     )
     typer.echo(run_path.name)
+
+
+@app.command()
+def calibrate(
+    target: Annotated[str, typer.Option(help="SSH destination")]
+    = "kbl@192.168.19.128",
+    data_root: DataRoot = Path("var/runs"),
+    incoming_root: Annotated[Path, typer.Option(help="Incoming bundle root")]
+    = Path("var/incoming"),
+    queue_file: QueueFile = Path("var/calibration.jsonl"),
+    per_group: Annotated[int, typer.Option(help="Cold boots per group")] = 10,
+    backend: Annotated[str, typer.Option(help="Power backend: vix | wol")] = "vix",
+    vmx_path: Annotated[str | None, typer.Option(help="VMX path for the vix backend")]
+    = None,
+    mac: Annotated[str | None, typer.Option(help="MAC address for the wol backend")]
+    = None,
+    report_out: Annotated[Path, typer.Option(help="Calibration verdict JSON path")]
+    = Path("var/calibration-report.json"),
+) -> None:
+    """Run the bare/benchmark observer-overhead calibration (spec 7)."""
+    kwargs: dict[str, str] = {"target": target}
+    if vmx_path:
+        kwargs["vmx_path"] = vmx_path
+    if mac:
+        kwargs["mac"] = mac
+    power = power_backend_factory(backend, **kwargs)
+
+    verdict = run_calibration(
+        queue_file=queue_file,
+        store=RunStore(data_root),
+        power=power,
+        target=target,
+        incoming_root=incoming_root,
+        per_group=per_group,
+    )
+    report_out.parent.mkdir(parents=True, exist_ok=True)
+    report_out.write_text(
+        verdict.model_dump_json(indent=2) + "\n", encoding="utf-8", newline="\n"
+    )
+
+    for group in (verdict.bare, verdict.benchmark):
+        graphical = (
+            f"{group.graphical_median_ns / 1e9:.3f}s"
+            if group.graphical_median_ns is not None
+            else "n/a"
+        )
+        typer.echo(
+            f"{group.profile}: {group.runs} runs, "
+            f"os_total median {group.os_total_median_ns / 1e9:.3f}s, "
+            f"graphical median {graphical}"
+        )
+    graphical_delta = (
+        f"{verdict.graphical_delta_percent:+.3f}%"
+        if verdict.graphical_delta_percent is not None
+        else "n/a"
+    )
+    typer.echo(
+        f"os_total delta {verdict.os_total_delta_percent:+.3f}% / "
+        f"graphical delta {graphical_delta}"
+    )
+    if not verdict.passed:
+        typer.echo("CALIBRATION FAIL: benchmark overhead >= 1% (or graphical unmeasured)")
+        raise typer.Exit(code=1)
+    typer.echo("CALIBRATION PASS: benchmark overhead < 1%")
 
 
 # -- Phase 2 experiment commands ---------------------------------------------
