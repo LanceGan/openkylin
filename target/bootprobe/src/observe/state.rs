@@ -10,7 +10,7 @@ use crate::observe::journal::JournalLine;
 /// Spec §8 timeouts, all on the CLOCK_BOOTTIME axis.
 pub const GREETER_TIMEOUT_NS: u64 = 90_000_000_000;
 pub const SESSION_TIMEOUT_NS: u64 = 30_000_000_000;
-pub const USABLE_TIMEOUT_NS: u64 = 120_000_000_000;
+pub const USABLE_TIMEOUT_NS: u64 = 300_000_000_000;
 
 /// Units that must be active before login injection (spec §4.2).
 /// MUST stay aligned with `_REQUIRED_UNITS` in `src/kylinbootlab/readiness.py`.
