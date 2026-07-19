@@ -7,6 +7,7 @@ from uuid import UUID
 from jinja2 import Environment, StrictUndefined, select_autoescape
 
 from kylinbootlab.capture import load_command_capture
+from kylinbootlab.readiness import load_readiness
 from kylinbootlab.store import RunStore
 from kylinbootlab.systemd import BootMetrics, UnitTiming, parse_systemd_blame, parse_systemd_time
 
@@ -34,10 +35,18 @@ def seconds(nanoseconds: int | None) -> str:
     return f"{nanoseconds / 1_000_000_000:.3f} s"
 
 
+def readiness_seconds(nanoseconds: int | None) -> str:
+    """Timeline formatting: absent measurements render as "not measured"."""
+    if nanoseconds is None:
+        return "not measured"
+    return f"{nanoseconds / 1_000_000_000:.3f} s"
+
+
 def write_baseline_report(store: RunStore, run_id: UUID) -> ReportPaths:
     run_path = store.run_path(run_id)
     manifest = store.load_manifest(run_id)
     boot, units = analyze_run(store, run_id)
+    readiness = load_readiness(run_path, manifest)
     derived = run_path / "derived"
     reports = run_path / "reports"
     derived.mkdir(exist_ok=True)
@@ -49,6 +58,7 @@ def write_baseline_report(store: RunStore, run_id: UUID) -> ReportPaths:
         "boot_id": str(manifest.boot_id),
         "host": manifest.host.model_dump(mode="json"),
         "boot": boot.model_dump(mode="json"),
+        "readiness": readiness.model_dump(mode="json"),
         "units": [unit.model_dump(mode="json") for unit in units],
     }
     metrics_path = derived / "metrics.json"
@@ -86,6 +96,12 @@ def write_baseline_report(store: RunStore, run_id: UUID) -> ReportPaths:
                 {"rank": unit.rank, "name": unit.unit, "duration": seconds(unit.duration_ns)}
                 for unit in units[:20]
             ],
+            readiness_status=readiness.status,
+            readiness_mode=readiness.mode or "n/a",
+            login_ready_time=readiness_seconds(readiness.login_ready_ns),
+            session_time=readiness_seconds(readiness.session_ns),
+            usable_time=readiness_seconds(readiness.usable_ns),
+            sentinel_time=readiness_seconds(readiness.sentinel_first_window_ns),
         )
         + "\n",
         encoding="utf-8",
