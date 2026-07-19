@@ -34,7 +34,7 @@ mod driver {
     use crate::events::{EventKind, EventSource, ReadinessEvent};
     use crate::observe::config::{DONE_MARKER, EVENTS_FILE, ObserveConfig, USABLE_RESULT_FILE};
     use crate::observe::journal::{parse_journal_json, spawn_journal_follower};
-    use crate::observe::state::{ReadinessState, REQUIRED_UNITS, Signal};
+    use crate::observe::state::{REQUIRED_UNITS, ReadinessState, Signal};
     use crate::observe::uinput::UinputKeyboard;
     use crate::system::{boottime_ns, read_boot_id};
 
@@ -47,8 +47,8 @@ mod driver {
     impl EventLog {
         fn create(path: &Path) -> Result<Self> {
             // Truncates the previous boot's stream by design.
-            let file = File::create(path)
-                .with_context(|| format!("cannot create {}", path.display()))?;
+            let file =
+                File::create(path).with_context(|| format!("cannot create {}", path.display()))?;
             Ok(Self { file })
         }
 
@@ -72,7 +72,7 @@ mod driver {
                 let Ok(line) = line else { break };
                 if sender.send(line).is_err() {
                     break;
-            }
+                }
             }
         });
         Ok(receiver)
@@ -106,7 +106,7 @@ mod driver {
             Ok(keyboard) => {
                 let events = machine.feed(Signal::UinputReady {
                     monotonic_ns: boottime_ns()?,
-            });
+                });
                 log.write_all(&events)?;
                 Some(keyboard)
             }
@@ -132,7 +132,7 @@ mod driver {
                 if let Some(parsed) = parse_journal_json(&line) {
                     let events = machine.feed(Signal::Journal(parsed));
                     log.write_all(&events)?;
-                    }
+                }
             }
 
             // 2. Poll unit states — one subprocess per tick, and none at all
@@ -144,15 +144,15 @@ mod driver {
                 let capture = run_command("systemctl", &args);
                 let now = boottime_ns()?;
                 for (unit, status) in units.iter().zip(capture.stdout.lines()) {
-                if status.trim() == "active" {
+                    if status.trim() == "active" {
                         pending_units.remove(*unit);
-                    let events = machine.feed(Signal::UnitActive {
+                        let events = machine.feed(Signal::UnitActive {
                             unit: (*unit).to_owned(),
                             monotonic_ns: now,
                         });
-                    log.write_all(&events)?;
+                        log.write_all(&events)?;
                     }
-            }
+                }
             }
 
             // 3. Fire the one-shot injection when the gate opens.
@@ -162,13 +162,13 @@ mod driver {
                     .expect("injection gate requires a successful uinput self-check");
                 match keyboard.type_password_and_enter(&config.password) {
                     Ok(()) => {
-                    let events = machine.feed(Signal::LoginInjected {
+                        let events = machine.feed(Signal::LoginInjected {
                             monotonic_ns: boottime_ns()?,
                         });
-                    log.write_all(&events)?;
+                        log.write_all(&events)?;
                     }
                     Err(error) => {
-                    log.write_all(&[ReadinessEvent::new(
+                        log.write_all(&[ReadinessEvent::new(
                             EventKind::Error,
                             EventSource::Probe,
                             boottime_ns()?,
@@ -176,7 +176,7 @@ mod driver {
                         )])?;
                         break; // done marker below still lands for diagnostics
                     }
-            }
+                }
             }
 
             // 4. Merge the usable-probe result when it appears (the probe
@@ -192,7 +192,7 @@ mod driver {
                 let emitted = machine.feed(Signal::UsableResult {
                     events,
                     monotonic_ns: boottime_ns()?,
-            });
+                });
                 log.write_all(&emitted)?;
             }
 
