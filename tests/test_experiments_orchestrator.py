@@ -186,6 +186,10 @@ def test_run_queue_completes_three_experiments(
         "kylinbootlab.experiments.orchestrator.wait_for_boot_finished",
         lambda target, timeout=120.0: True,
     )
+    monkeypatch.setattr(
+        "kylinbootlab.experiments.orchestrator.wait_for_observer_done",
+        lambda target, timeout=300.0: True,
+    )
     _patch_collect(monkeypatch, tmp_path)
 
     power = StubPower()
@@ -296,6 +300,10 @@ def test_run_queue_requeues_experiment_left_running_by_crashed_controller(
         "kylinbootlab.experiments.orchestrator.wait_for_boot_finished",
         lambda target, timeout=120.0: True,
     )
+    monkeypatch.setattr(
+        "kylinbootlab.experiments.orchestrator.wait_for_observer_done",
+        lambda target, timeout=300.0: True,
+    )
     _patch_collect(monkeypatch, tmp_path)
 
     power = StubPower()
@@ -328,6 +336,10 @@ def test_run_queue_retry_succeeds_and_clears_stale_error(
     monkeypatch.setattr(
         "kylinbootlab.experiments.orchestrator.wait_for_boot_finished",
         lambda target, timeout=120.0: True,
+    )
+    monkeypatch.setattr(
+        "kylinbootlab.experiments.orchestrator.wait_for_observer_done",
+        lambda target, timeout=300.0: True,
     )
 
     restore_calls: list[str] = []
@@ -368,6 +380,10 @@ def test_run_queue_survives_bundle_error_and_continues(
     monkeypatch.setattr(
         "kylinbootlab.experiments.orchestrator.wait_for_boot_finished",
         lambda target, timeout=120.0: True,
+    )
+    monkeypatch.setattr(
+        "kylinbootlab.experiments.orchestrator.wait_for_observer_done",
+        lambda target, timeout=300.0: True,
     )
 
     def fake_collect(
@@ -416,3 +432,116 @@ def test_run_queue_survives_bundle_error_and_continues(
     assert ok.error is None
     # Recovery ran once between the corrupt experiment's two attempts.
     assert restore_calls == [TARGET]
+
+
+# -- observer gate ------------------------------------------------------------
+
+
+def test_wait_for_observer_done_passes_when_marker_absent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No enabled marker = observer off or never deployed: gate passes immediately."""
+    from kylinbootlab.experiments.aliveness import wait_for_observer_done
+
+    commands: list[list[str]] = []
+
+    def fake_run(
+        args: Sequence[str],
+        **_kwargs: Any,
+    ) -> subprocess.CompletedProcess[str]:
+        commands.append(list(args))
+        return subprocess.CompletedProcess(args, 1, stdout="", stderr="")
+
+    monkeypatch.setattr("kylinbootlab.experiments.aliveness.subprocess.run", fake_run)
+
+    assert wait_for_observer_done("target.local", timeout=5, interval=0.01) is True
+    assert len(commands) == 1  # single fast-degrade probe, no polling
+    assert commands[0][-3:] == ["test", "-f", "/var/lib/kylinbootlab/observe/enabled"]
+
+
+def test_wait_for_observer_done_polls_boot_id_stamped_marker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Enabled: polls the done-marker/boot_id comparison until it succeeds."""
+    from kylinbootlab.experiments.aliveness import wait_for_observer_done
+
+    commands: list[list[str]] = []
+
+    def fake_run(
+        args: Sequence[str],
+        **_kwargs: Any,
+    ) -> subprocess.CompletedProcess[str]:
+        commands.append(list(args))
+        # Call 1: enabled-marker probe succeeds.  Call 2: done not ready.  Call 3: ready.
+        returncode = 0 if len(commands) in (1, 3) else 1
+        return subprocess.CompletedProcess(args, returncode, stdout="", stderr="")
+
+    monkeypatch.setattr("kylinbootlab.experiments.aliveness.subprocess.run", fake_run)
+
+    assert wait_for_observer_done("target.local", timeout=10, interval=0.01) is True
+    assert len(commands) == 3
+    marker_check = commands[-1][-1]
+    assert "/var/lib/kylinbootlab/observe/done" in marker_check
+    assert "/proc/sys/kernel/random/boot_id" in marker_check
+
+
+def test_wait_for_observer_done_times_out(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Enabled but the done marker never matches: returns False at timeout."""
+    from kylinbootlab.experiments.aliveness import wait_for_observer_done
+
+    call_count = 0
+
+    def fake_run(
+        args: Sequence[str],
+        **_kwargs: Any,
+    ) -> subprocess.CompletedProcess[str]:
+        nonlocal call_count
+        call_count += 1
+        returncode = 0 if call_count == 1 else 1  # marker present, done never ready
+        return subprocess.CompletedProcess(args, returncode, stdout="", stderr="")
+
+    monkeypatch.setattr("kylinbootlab.experiments.aliveness.subprocess.run", fake_run)
+
+    assert wait_for_observer_done("target.local", timeout=0.05, interval=0.01) is False
+
+
+def test_run_queue_fails_when_observer_never_finishes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Observer gate timeout is retryable: recovery runs, then the record fails."""
+    store = RunStore(tmp_path / "runs")
+    queue = ExperimentQueue(tmp_path / "queue.jsonl")
+    queue.enqueue([_record("exp-observer-stuck", max_attempts=2)])
+
+    monkeypatch.setattr(
+        "kylinbootlab.experiments.orchestrator.wait_for_ssh",
+        lambda target, timeout=120.0: True,
+    )
+    monkeypatch.setattr(
+        "kylinbootlab.experiments.orchestrator.wait_for_boot_finished",
+        lambda target, timeout=120.0: True,
+    )
+    monkeypatch.setattr(
+        "kylinbootlab.experiments.orchestrator.wait_for_observer_done",
+        lambda target, timeout=300.0: False,
+    )
+
+    restore_calls: list[str] = []
+
+    def fake_restore(
+        power: TargetPower, target: str, *, runner: object | None = None
+    ) -> None:
+        restore_calls.append(target)
+
+    monkeypatch.setattr(RecoveryManager, "restore", fake_restore)
+
+    power = StubPower()
+    _orchestrator(queue, store, power, tmp_path).run_queue()
+
+    (record,) = queue.list()
+    assert record.status == "failed"
+    assert record.attempt == 2
+    assert record.error is not None
+    assert "observer did not finish" in record.error
+    # Recovery ran between attempts, exactly as for other retryable failures.
+    assert restore_calls == [TARGET, TARGET]

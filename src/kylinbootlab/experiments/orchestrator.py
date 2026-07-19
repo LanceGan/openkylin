@@ -12,7 +12,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
-from kylinbootlab.experiments.aliveness import wait_for_boot_finished, wait_for_ssh
+from kylinbootlab.experiments.aliveness import (
+    wait_for_boot_finished,
+    wait_for_observer_done,
+    wait_for_ssh,
+)
 from kylinbootlab.experiments.contracts import ExperimentRecord
 from kylinbootlab.experiments.power import TargetPower
 from kylinbootlab.experiments.queue import ExperimentQueue
@@ -25,6 +29,7 @@ from kylinbootlab.remote import (
 from kylinbootlab.store import BundleError, RunStore
 
 _SSH_DEADLINE_SECONDS: float = 120.0
+_OBSERVER_DEADLINE_SECONDS: float = 300.0
 
 
 # -- error hierarchy -----------------------------------------------------
@@ -133,6 +138,18 @@ class ExperimentOrchestrator:
             raise TargetUnreachableError(
                 f"systemd boot did not finish within "
                 f"{_SSH_DEADLINE_SECONDS:.0f}s on {self.target} for {exp_id}"
+            )
+
+        # 2c. Phase 3 observer gate.  wait_for_observer_done fast-degrades
+        # to True when the enabled marker is absent (observer off for this
+        # boot — e.g. the calibration bare group — or never deployed), so
+        # those boots skip straight to collection.  When enabled,
+        # collecting before the boot_id-stamped done marker would truncate
+        # the readiness event stream mid-boot.
+        if not wait_for_observer_done(self.target, timeout=_OBSERVER_DEADLINE_SECONDS):
+            raise TargetUnreachableError(
+                f"observer did not finish within "
+                f"{_OBSERVER_DEADLINE_SECONDS:.0f}s on {self.target} for {exp_id}"
             )
 
         # 3. Collect a boot snapshot through the Phase 1 pipeline.
