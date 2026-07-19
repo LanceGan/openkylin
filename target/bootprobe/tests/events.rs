@@ -1,4 +1,4 @@
-use kbl_bootprobe::events::{EventKind, EventSource, ReadinessEvent};
+use kbl_bootprobe::events::{EventKind, EventSource, ReadinessEvent, readiness_fixture};
 
 #[test]
 fn event_serializes_to_single_jsonl_line() {
@@ -55,4 +55,17 @@ fn all_thirteen_kinds_serialize_snake_case() {
 fn unknown_fields_are_rejected() {
     let line = r#"{"schema_version":1,"monotonic_ns":1,"kind":"usable","detail":"","source":"probe","extra":true}"#;
     assert!(serde_json::from_str::<ReadinessEvent>(line).is_err());
+}
+
+#[test]
+fn readiness_fixture_is_monotonic_and_complete() {
+    let fixture = readiness_fixture();
+    assert_eq!(fixture.len(), 13);
+    let mut previous = 0;
+    for event in &fixture {
+        assert!(event.monotonic_ns >= previous, "fixture must be time-ordered");
+        previous = event.monotonic_ns;
+    }
+    assert_eq!(fixture[0].kind, EventKind::ObserverStarted);
+    assert_eq!(fixture[12].kind, EventKind::Usable);
 }

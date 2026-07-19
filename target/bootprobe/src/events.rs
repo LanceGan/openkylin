@@ -62,3 +62,26 @@ impl ReadinessEvent {
         serde_json::to_string(self).expect("ReadinessEvent serialization cannot fail")
     }
 }
+
+/// Cross-language fixture stream — byte-for-byte identical to
+/// `tests/fixtures/readiness-events-v1.jsonl` on the Python side
+/// (verified by `tests/test_rust_contract.py`).
+pub fn readiness_fixture() -> Vec<ReadinessEvent> {
+    use EventKind as K;
+    use EventSource as S;
+    vec![
+        ReadinessEvent::new(K::ObserverStarted, S::Probe, 3_000_000_000, "mode=benchmark"),
+        ReadinessEvent::new(K::GreeterStarted, S::Journald, 6_613_388_000, "lightdm start begin"),
+        ReadinessEvent::new(K::UnitActive, S::Systemd, 7_000_000_000, "dbus.service"),
+        ReadinessEvent::new(K::UnitActive, S::Systemd, 7_100_000_000, "NetworkManager.service"),
+        ReadinessEvent::new(K::UnitActive, S::Systemd, 7_200_000_000, "lightdm.service"),
+        ReadinessEvent::new(K::GreeterReady, S::Journald, 8_500_000_000, "ukui-greeter first output"),
+        ReadinessEvent::new(K::LoginInjected, S::Probe, 9_000_000_000, "password+enter via uinput"),
+        ReadinessEvent::new(K::SessionOpened, S::Journald, 11_500_000_000, "session opened for user kbl"),
+        ReadinessEvent::new(K::DesktopProcessUp, S::Probe, 16_000_000_000, "ukui-panel"),
+        ReadinessEvent::new(K::AtspiDesktopReady, S::Atspi, 16_500_000_000, "3 desktop children"),
+        ReadinessEvent::new(K::SentinelLaunched, S::Probe, 16_600_000_000, "mate-terminal"),
+        ReadinessEvent::new(K::SentinelWindowShown, S::Atspi, 18_100_000_000, "mate-terminal window"),
+        ReadinessEvent::new(K::Usable, S::Probe, 18_100_000_000, "all three conditions met"),
+    ]
+}

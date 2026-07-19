@@ -64,6 +64,11 @@ pub fn default_capture_specs() -> Vec<CaptureSpec> {
             ]),
             required: false,
         },
+        CaptureSpec {
+            name: "readiness-events",
+            command: words(&["cat", "/var/lib/kylinbootlab/observe/current.jsonl"]),
+            required: false,
+        },
     ]
 }
 
