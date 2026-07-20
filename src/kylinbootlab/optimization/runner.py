@@ -82,6 +82,15 @@ class ABBARunner:
         scheduler = ABBAScheduler(total_blocks=4, warmup_boots=2)
         state_machine = ProfileStateMachine(initial="A")
 
+        # Ensure the VM is running before applying any profiles.
+        # The orchestrator handles power cycling during the loop, but
+        # the profile executor needs an accessible target from the start.
+        from kylinbootlab.experiments.aliveness import wait_for_ssh
+
+        if not power.guest_alive():
+            power.power_on()
+            wait_for_ssh(target, timeout=120)
+
         sequence = scheduler.generate_sequence()  # 18 elements
         total_boots = len(sequence)
 
