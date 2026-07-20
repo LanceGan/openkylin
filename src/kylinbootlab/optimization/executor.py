@@ -39,12 +39,14 @@ class ProfileExecutor:
             command = command.replace(
                 "sudo ",
                 f"echo '{self.password}' | sudo -S ",
-                1,  # replace first occurrence only
+                1,
             )
         return subprocess.run(
             ["ssh", *_SSH_OPTIONS, self.target, command],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=30,
             check=False,
         )
@@ -89,16 +91,10 @@ class ProfileExecutor:
             )
 
     def verify_applied(self, plan: OptimizationPlan) -> bool:
-        """Check whether the optimization is currently applied on the target.
-
-        For mask plans: checks if unit symlink points to /dev/null.
-        For drop-in plans: checks if the drop-in file exists.
-        """
+        """Check whether the optimization is currently applied on the target."""
         if plan.mask_unit is not None:
-            # Check the actual symlink — more reliable than parsing systemctl status
-            r = self._ssh(f"test -L /etc/systemd/system/{plan.mask_unit} && "
-                          f"readlink /etc/systemd/system/{plan.mask_unit} | grep -q /dev/null")
-            return r.returncode == 0
+            r = self._ssh(f"systemctl is-enabled {plan.mask_unit} 2>&1")
+            return "masked" in (r.stdout or "")
         if plan.drop_in_path is not None:
             r = self._ssh(f"test -f {plan.drop_in_path}")
             return r.returncode == 0
