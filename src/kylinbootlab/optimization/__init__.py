@@ -13,6 +13,7 @@ from kylinbootlab.optimization.plan import (
     build_parallelize_kylin,
     build_socket_nm_wait,
 )
+from kylinbootlab.optimization.planner import rank_candidates, score_plan
 
 __all__ = [
     "BottleneckEvidence",
@@ -23,4 +24,6 @@ __all__ = [
     "build_mask_strongswan",
     "build_parallelize_kylin",
     "build_socket_nm_wait",
+    "rank_candidates",
+    "score_plan",
 ]
