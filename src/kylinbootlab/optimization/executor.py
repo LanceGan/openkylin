@@ -30,9 +30,17 @@ class ProfileExecutor:
     def _ssh(self, command: str) -> subprocess.CompletedProcess[str]:
         """Execute a single shell command on the target via SSH.
 
+        When *self.password* is set, ``sudo`` commands are prefixed with
+        ``echo '<password>' | sudo -S`` so they work in non-interactive mode.
         The *command* is passed as a single string to ``ssh <target> <command>``
         so that pipes, redirects, and compound statements work correctly.
         """
+        if self.password is not None and "sudo " in command:
+            command = command.replace(
+                "sudo ",
+                f"echo '{self.password}' | sudo -S ",
+                1,  # replace first occurrence only
+            )
         return subprocess.run(
             ["ssh", *_SSH_OPTIONS, self.target, command],
             capture_output=True,
@@ -87,13 +95,13 @@ class ProfileExecutor:
         For drop-in plans: checks if the drop-in file exists.
         """
         if plan.mask_unit is not None:
-            result = self._ssh(
-                f"systemctl status {plan.mask_unit} 2>&1"
-            )
-            return "Loaded: masked" in result.stdout
+            # Check the actual symlink — more reliable than parsing systemctl status
+            r = self._ssh(f"test -L /etc/systemd/system/{plan.mask_unit} && "
+                          f"readlink /etc/systemd/system/{plan.mask_unit} | grep -q /dev/null")
+            return r.returncode == 0
         if plan.drop_in_path is not None:
-            result = self._ssh(f"test -f {plan.drop_in_path}")
-            return result.returncode == 0
+            r = self._ssh(f"test -f {plan.drop_in_path}")
+            return r.returncode == 0
         return False
 
     def apply_with_retry(
