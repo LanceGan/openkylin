@@ -232,3 +232,81 @@ def test_analyze_nonexistent_run_id(tmp_path: Path) -> None:
         app, ["analyze", "00000000-0000-0000-0000-000000000000", "--data-root", str(tmp_path)]
     )
     assert result.exit_code != 0
+
+
+# -- Phase 5 optimize smoke tests ---------------------------------------------
+
+
+class TestOptimizePlanSmoke:
+    """Smoke test for 'kbl optimize plan' against a stored run with bottleneck data."""
+
+    def test_optimize_plan_smoke(self, tmp_path, monkeypatch):
+        """CLI should succeed when bottleneck-report.json exists."""
+        import json
+        from uuid import uuid4
+
+        from kylinbootlab.analysis.graph import Bottleneck
+
+        # Create a minimal RunStore with a bottleneck report
+        store_root = tmp_path / "runs"
+        run_id = uuid4()
+        run_dir = store_root / str(run_id)
+        derived_dir = run_dir / "derived"
+        derived_dir.mkdir(parents=True)
+
+        # Write a bottleneck report with one known node
+        bottlenecks = [
+            Bottleneck(
+                rank=1,
+                node="biometric-authentication.service",
+                blame_ns=706_000_000,
+                slack_ns=200_000_000,
+                on_critical_path=False,
+                score=0.85,
+                evidence="Test evidence",
+            ),
+            Bottleneck(
+                rank=2,
+                node="NetworkManager-wait-online.service",
+                blame_ns=703_000_000,
+                slack_ns=0,
+                on_critical_path=True,
+                score=0.92,
+                evidence="Test evidence",
+            ),
+        ]
+        (derived_dir / "bottleneck-report.json").write_text(
+            json.dumps([b.model_dump() for b in bottlenecks], indent=2),
+            encoding="utf-8",
+        )
+
+        from typer.testing import CliRunner
+
+        from kylinbootlab.cli import app
+
+        runner = CliRunner()
+        result = runner.invoke(
+            app,
+            ["optimize", "plan", str(run_id), "--data-root", str(store_root)],
+        )
+        assert result.exit_code == 0
+        assert "mask-biometric" in result.stdout
+        assert "socket-nm-wait" in result.stdout
+
+
+class TestOptimizeRunSmoke:
+    """Smoke test for 'kbl optimize run' argument validation."""
+
+    def test_unknown_plan_id_rejected(self):
+        """CLI should reject unknown plan IDs with a helpful message."""
+        from typer.testing import CliRunner
+
+        from kylinbootlab.cli import app
+
+        runner = CliRunner()
+        result = runner.invoke(
+            app,
+            ["optimize", "run", "nonexistent-plan", "--backend", "vix"],
+        )
+        assert result.exit_code == 1
+        assert "Unknown plan_id" in result.stdout or "Unknown plan_id" in result.stderr

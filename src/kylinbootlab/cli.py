@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated
@@ -20,6 +21,8 @@ from kylinbootlab.store import RunStore
 
 if TYPE_CHECKING:
     from kylinbootlab.analysis.graph import CausalGraph
+    from kylinbootlab.experiments.power import TargetPower
+    from kylinbootlab.optimization.plan import OptimizationPlan
 
 app = typer.Typer(no_args_is_help=True)
 DataRoot = Annotated[Path, typer.Option(help="Immutable KylinBootLab run root")]
@@ -384,3 +387,209 @@ def cmd_analyze(
         else "No bottlenecks found"
     )
     print(f"Reports written to {derived_dir}")
+
+
+# -- Phase 5 optimize commands ------------------------------------------------
+
+optimize_app = typer.Typer(no_args_is_help=True)
+app.add_typer(optimize_app, name="optimize", help="Optimization planning and validation")
+
+
+@optimize_app.command("plan")
+def cmd_optimize_plan(
+    run_id: str = typer.Argument(..., help="Run UUID with bottleneck-report.json"),
+    data_root: DataRoot = Path("var/runs"),  # noqa: B008
+) -> None:
+    """Score and rank optimization candidates from a bottleneck report.
+
+    Loads ``derived/bottleneck-report.json`` from the specified run, maps
+    each Bottleneck to a known OptimizationPlan candidate, scores them,
+    and prints a ranked table.
+    """
+    import json
+    from uuid import UUID
+
+    from kylinbootlab.analysis.graph import Bottleneck
+    from kylinbootlab.optimization.plan import (
+        build_exec_delay_lightdm,
+        build_mask_biometric,
+        build_mask_strongswan,
+        build_parallelize_kylin,
+        build_socket_nm_wait,
+    )
+    from kylinbootlab.optimization.planner import rank_candidates
+    from kylinbootlab.store import RunStore
+
+    store = RunStore(data_root)
+    rid = UUID(run_id)
+    derived = store.derived_path(rid)
+    br_path = derived / "bottleneck-report.json"
+
+    if not br_path.is_file():
+        typer.echo(
+            f"No bottleneck report found at {br_path}. "
+            f"Run 'kbl analyze {run_id}' first.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    raw = json.loads(br_path.read_text(encoding="utf-8"))
+    bottlenecks = [Bottleneck.model_validate(b) for b in raw]
+
+    # Map bottleneck nodes to known candidates
+    known_candidates = {
+        "biometric-authentication.service": build_mask_biometric,
+        "strongswan.service": build_mask_strongswan,
+        "NetworkManager-wait-online.service": build_socket_nm_wait,
+        "kylin-display-manager.service": build_parallelize_kylin,
+        "lightdm.service": build_exec_delay_lightdm,
+    }
+
+    candidates = []
+    for b in bottlenecks:
+        factory = known_candidates.get(b.node)
+        if factory is not None:
+            plan = factory()
+            # Override evidence with actual Phase 4 data
+            plan.evidence.blame_ns = b.blame_ns
+            plan.evidence.slack_ns = b.slack_ns
+            plan.evidence.on_critical_path = b.on_critical_path
+            candidates.append(plan)
+
+    if not candidates:
+        typer.echo("No matching optimization candidates found for the top bottlenecks.")
+        raise typer.Exit(code=0)
+
+    ranked = rank_candidates(candidates)
+    typer.echo(f"{'Rank':<5} {'Plan ID':<25} {'Score':<15} {'Predicted':<12} {'Category'}")
+    typer.echo("-" * 80)
+    for i, (plan, score) in enumerate(ranked, 1):
+        gain_s = plan.expected_gain.predicted_ns / 1e9
+        typer.echo(
+            f"{i:<5} {plan.plan_id:<25} {score:<15.2f} {gain_s:<12.3f}s {plan.category}"
+        )
+
+
+@optimize_app.command("run")
+def cmd_optimize_run(
+    plan_id: str = typer.Argument(..., help="Candidate plan ID to validate"),
+    target: Annotated[str, typer.Option(help="SSH destination")]
+    = "kbl@192.168.19.128",
+    password: Annotated[str | None, typer.Option(help="Target sudo password")] = None,
+    data_root: DataRoot = Path("var/runs"),  # noqa: B008
+    incoming_root: Annotated[Path, typer.Option(help="Incoming bundle root")]
+    = Path("var/incoming"),  # noqa: B008
+    backend: Annotated[str, typer.Option(help="Power backend: vix | wol")] = "vix",
+    vmx_path: Annotated[str | None, typer.Option(help="VMX path for the vix backend")]
+    = None,
+    mac: Annotated[str | None, typer.Option(help="MAC address for the wol backend")]
+    = None,
+) -> None:
+    """Run a single ABBA validation experiment for one optimization candidate."""
+    known_plans = _load_known_plans()
+    if plan_id not in known_plans:
+        typer.echo(f"Unknown plan_id: {plan_id}", err=True)
+        typer.echo(f"Available: {', '.join(sorted(known_plans))}", err=True)
+        raise typer.Exit(code=1)
+
+    from kylinbootlab.optimization.runner import ABBARunner
+
+    plan = known_plans[plan_id]()
+    runner = ABBARunner()
+    result = runner.run(
+        plan=plan,
+        target=target,
+        store=RunStore(data_root),
+        power=_build_power(backend, target, vmx_path, mac),
+        incoming_root=incoming_root,
+        password=password,
+    )
+
+    typer.echo(f"\nVerdict: {result.verdict}")
+    typer.echo(f"Median improvement: {result.statistics.median_improvement_ns / 1e6:.1f}ms "
+               f"({result.statistics.median_improvement_pct:.2f}%)")
+    typer.echo(f"95% CI: [{result.statistics.ci_lower_95_ns / 1e6:.1f}ms, "
+               f"{result.statistics.ci_upper_95_ns / 1e6:.1f}ms]")
+    if result.failed_gates:
+        typer.echo("Failed gates:")
+        for gate in result.failed_gates:
+            typer.echo(f"  - {gate}")
+
+
+@optimize_app.command("run-all")
+def cmd_optimize_run_all(
+    target: Annotated[str, typer.Option(help="SSH destination")]
+    = "kbl@192.168.19.128",
+    password: Annotated[str | None, typer.Option(help="Target sudo password")] = None,
+    data_root: DataRoot = Path("var/runs"),  # noqa: B008
+    incoming_root: Annotated[Path, typer.Option(help="Incoming bundle root")]
+    = Path("var/incoming"),  # noqa: B008
+    backend: Annotated[str, typer.Option(help="Power backend: vix | wol")] = "vix",
+    vmx_path: Annotated[str | None, typer.Option(help="VMX path for the vix backend")]
+    = None,
+    mac: Annotated[str | None, typer.Option(help="MAC address for the wol backend")]
+    = None,
+) -> None:
+    """Run all ranked optimization candidates sequentially on one target.
+
+    Placeholder stub -- will iterate ranked candidates and call the ABBA runner
+    for each. Currently raises ``NotImplementedError``.
+    """
+    raise NotImplementedError("run-all not yet implemented")
+
+
+@optimize_app.command("status")
+def cmd_optimize_status(
+    opt_run_id: str = typer.Argument(..., help="Optimization run ID"),
+) -> None:
+    """Show ABBA experiment progress for an optimization run.
+
+    Placeholder stub. Will report boots completed, current block, profile state.
+    """
+    typer.echo(f"Status for optimization run {opt_run_id}: placeholder stub")
+
+
+@optimize_app.command("report")
+def cmd_optimize_report(
+    opt_run_id: str = typer.Argument(..., help="Optimization run ID"),
+) -> None:
+    """Generate validation report for an optimization run.
+
+    Placeholder stub. Will produce metrics JSON + verdict summary.
+    """
+    typer.echo(f"Report for optimization run {opt_run_id}: placeholder stub")
+
+
+def _load_known_plans() -> dict[str, Callable[[], OptimizationPlan]]:
+    """Return mapping of plan_id -> factory function for known candidates."""
+    from kylinbootlab.optimization.plan import (
+        build_exec_delay_lightdm,
+        build_mask_biometric,
+        build_mask_strongswan,
+        build_parallelize_kylin,
+        build_socket_nm_wait,
+    )
+    return {
+        "mask-biometric": build_mask_biometric,
+        "mask-strongswan": build_mask_strongswan,
+        "socket-nm-wait": build_socket_nm_wait,
+        "parallelize-kylin": build_parallelize_kylin,
+        "exec-delay-lightdm": build_exec_delay_lightdm,
+    }
+
+
+def _build_power(
+    backend: str,
+    target: str,
+    vmx_path: str | None,
+    mac: str | None,
+) -> TargetPower:
+    """Build a TargetPower instance from CLI parameters."""
+    from kylinbootlab.experiments.power import power_backend_factory
+
+    kwargs: dict[str, str] = {"target": target}
+    if vmx_path:
+        kwargs["vmx_path"] = vmx_path
+    if mac:
+        kwargs["mac"] = mac
+    return power_backend_factory(backend, **kwargs)
