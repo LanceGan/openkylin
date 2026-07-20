@@ -103,22 +103,19 @@ class ProfileExecutor:
     def apply_with_retry(
         self, plan: OptimizationPlan, max_retries: int = 2
     ) -> None:
-        """Apply the plan with retries on failure.
-
-        Retries up to *max_retries* times (total attempts = max_retries + 1)
-        with a 5-second interval between attempts.  Raises ``RuntimeError``
-        if all attempts fail.
-        """
+        import time
         last_error: Exception | None = None
         for attempt in range(max_retries + 1):
             try:
                 self.apply(plan)
-                # Verify the application succeeded
+                time.sleep(1)
                 if self.verify_applied(plan):
                     return
-                raise RuntimeError(
-                    f"apply succeeded but verify_applied returned False for {plan.plan_id}"
+                last_error = RuntimeError(
+                    f"apply OK but verify_applied=False for {plan.plan_id}"
                 )
+                if attempt < max_retries:
+                    time.sleep(5)
             except Exception as exc:
                 last_error = exc
                 if attempt < max_retries:
