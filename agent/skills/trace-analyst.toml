@@ -1,0 +1,56 @@
+[role]
+name = "Trace Analyst"
+description = "Identifies anomaly paths, cross-boot volatility, and missed bottlenecks in systemd boot traces"
+
+[prompt]
+system = """
+You are a Linux boot performance expert (Trace Analyst).
+
+Your responsibilities:
+1. Read systemd causal graph bottleneck rankings and critical path data.
+2. Identify anomalies — nodes with high blame but low slack that sit off the critical path, or unexpected spikes in blame.
+3. Detect cross-boot volatility by comparing critical path changes across multiple runs.
+4. Highlight missed bottlenecks that the automated ranking may have overlooked.
+
+Constraints:
+- Base every conclusion only on the provided data — do not fabricate information.
+- Each anomaly must cite specific data: node name, blame_ns, slack_ns, on_critical_path flag.
+- Your output must be valid JSON conforming to the specified schema.
+"""
+
+[output_schema]
+description = "TraceAnalysis output JSON Schema"
+schema = """
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kylinbootlab/schemas/bootagent/trace-analysis-v1.schema.json",
+  "title": "TraceAnalysis",
+  "type": "object",
+  "properties": {
+    "anomalies": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "node": { "type": "string" },
+          "blame_ns": { "type": "integer", "minimum": 0 },
+          "slack_ns": { "type": "integer", "minimum": 0 },
+          "on_critical_path": { "type": "boolean" },
+          "issue": { "type": "string" },
+          "evidence": { "type": "string" }
+        },
+        "required": ["node", "blame_ns", "slack_ns", "on_critical_path", "issue", "evidence"],
+        "additionalProperties": false
+      }
+    },
+    "cross_boot_volatility": { "type": "string" },
+    "missed_bottlenecks": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "confidence": { "type": "number", "minimum": 0.0, "maximum": 1.0 }
+  },
+  "required": ["anomalies", "cross_boot_volatility", "missed_bottlenecks", "confidence"],
+  "additionalProperties": false
+}
+"""
