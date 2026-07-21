@@ -44,6 +44,23 @@ class ProfileExecutor:
             check=False,
         )
 
+    def _ssh_slow(self, command: str) -> subprocess.CompletedProcess[str]:
+        """Same as _ssh but with 120s timeout for slow operations."""
+        if self.password is not None:
+            command = command.replace(
+                "sudo ",
+                f"echo '{self.password}' | sudo -S ",
+            )
+        return subprocess.run(
+            ["ssh", *_SSH_OPTIONS, self.target, command],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=120,
+            check=False,
+        )
+
     # -- apply ----------------------------------------------------------------
 
     def apply(self, plan: OptimizationPlan) -> None:
@@ -56,19 +73,19 @@ class ProfileExecutor:
                 escaped = plan.drop_in_content.replace("'", "'\\''")
                 self._ssh(
                     f"sudo mkdir -p $(dirname {plan.drop_in_path}) && "
-                    f"echo '{escaped}' | sudo tee {plan.drop_in_path} > /dev/null && "
-                    f"sudo update-grub"
+                    f"echo '{escaped}' | sudo tee {plan.drop_in_path} > /dev/null"
                 )
+                self._ssh_slow("sudo update-grub")
             elif plan.category == "initramfs_trim":
-                # Backup current initrd, write config, rebuild initramfs
+                # Write config + backup initrd (fast), then rebuild (slow)
                 escaped = plan.drop_in_content.replace("'", "'\\''")
                 kernel = "$(uname -r)"
                 self._ssh(
                     f"sudo mkdir -p $(dirname {plan.drop_in_path}) && "
                     f"echo '{escaped}' | sudo tee {plan.drop_in_path} > /dev/null && "
-                    f"sudo cp /boot/initrd.img-{kernel} /boot/initrd.img-{kernel}.kbl-backup && "
-                    f"sudo update-initramfs -u -k all"
+                    f"sudo cp /boot/initrd.img-{kernel} /boot/initrd.img-{kernel}.kbl-backup"
                 )
+                self._ssh_slow("sudo update-initramfs -u -k all")
             else:
                 # Standard drop-in (Phase 5 path)
                 drop_in_dir = plan.drop_in_path.rsplit("/", 1)[0]
@@ -94,11 +111,11 @@ class ProfileExecutor:
             self._ssh(f"sudo systemctl unmask {plan.mask_unit}")
         elif plan.drop_in_path is not None:
             if plan.category == "kernel_param":
-                self._ssh(
+                self._ssh_slow(
                     f"sudo rm -f {plan.drop_in_path} && sudo update-grub"
                 )
             elif plan.category == "initramfs_trim":
-                self._ssh(
+                self._ssh_slow(
                     f"sudo rm -f {plan.drop_in_path} && sudo update-initramfs -u -k all"
                 )
             else:
