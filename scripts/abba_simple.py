@@ -78,16 +78,15 @@ def run_abba(plan_name, plan_func):
 
             # Switch profile if needed
             if profile_letter != state.current:
-                # Orchestrator powers off after each experiment — VM is dead here.
-                # Bring it back before touching SSH-based profile switches.
-                if not power.guest_alive():
-                    power.power_on()
-                    for _ in range(24):
-                        r = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5",
-                            TARGET, "true"], capture_output=True)
-                        if r.returncode == 0:
-                            break
-                        time.sleep(5)
+                # Always force power-on before SSH operations.
+                # guest_alive() can be stale (VM powered but SSH not answering).
+                power.power_on()
+                for _ in range(30):
+                    r = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5",
+                        TARGET, "true"], capture_output=True)
+                    if r.returncode == 0:
+                        break
+                    time.sleep(5)
                 if profile_letter == "A":
                     executor.rollback(plan)
                 else:
