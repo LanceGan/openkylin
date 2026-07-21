@@ -1,12 +1,12 @@
 """Phase 5 real-VM acceptance: run ABBA experiments for 2 candidates."""
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from kylinbootlab.experiments.power import VixPower
 from kylinbootlab.optimization.plan import build_mask_biometric, build_socket_nm_wait
 from kylinbootlab.optimization.runner import ABBARunner
-from kylinbootlab.optimization.executor import ProfileExecutor
-from kylinbootlab.experiments.power import VixPower
 from kylinbootlab.store import RunStore
 
 TARGET = "kbl@192.168.19.128"

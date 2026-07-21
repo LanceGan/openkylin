@@ -91,7 +91,6 @@ class ProfileExecutor:
     def apply_with_retry(
         self, plan: OptimizationPlan, max_retries: int = 2
     ) -> None:
-        import time
         last_error: Exception | None = None
         for attempt in range(max_retries + 1):
             try:

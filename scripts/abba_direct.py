@@ -1,16 +1,20 @@
 """Phase 5 acceptance: bare-bones ABBA — no orchestrator, just power + collect."""
-import sys, json, time, subprocess
+import json
+import subprocess
+import sys
+import time
 from pathlib import Path
 from uuid import uuid4
+
 sys.path.insert(0, "src")
 
-from kylinbootlab.optimization.plan import build_mask_biometric, build_socket_nm_wait
+from kylinbootlab.capture import load_command_capture
 from kylinbootlab.optimization.executor import ProfileExecutor
+from kylinbootlab.optimization.plan import build_mask_biometric, build_socket_nm_wait
 from kylinbootlab.optimization.scheduler import ABBAScheduler, ProfileStateMachine
 from kylinbootlab.optimization.validator import bootstrap_ci, compute_statistics, verdict
-from kylinbootlab.remote import collect_target_run, SubprocessRunner
+from kylinbootlab.remote import SubprocessRunner, collect_target_run
 from kylinbootlab.store import RunStore
-from kylinbootlab.capture import load_command_capture
 from kylinbootlab.systemd import parse_systemd_time
 
 TARGET = "kbl@192.168.19.128"

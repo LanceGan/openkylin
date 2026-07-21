@@ -1,19 +1,19 @@
 """Run one fault corpus case: inject → boot → analyze → verify → cleanup."""
+import json
 import subprocess
 import sys
-import json
 from pathlib import Path
 from uuid import UUID
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from kylinbootlab.systemd import parse_systemd_blame
-from kylinbootlab.capture import load_command_capture
-from kylinbootlab.store import RunStore
-from kylinbootlab.readiness import parse_events
-from kylinbootlab.analysis.builder import CausalGraphBuilder
 from kylinbootlab.analysis.bottleneck import rank_bottlenecks
+from kylinbootlab.analysis.builder import CausalGraphBuilder
 from kylinbootlab.analysis.critical_path import critical_path
+from kylinbootlab.capture import load_command_capture
+from kylinbootlab.readiness import parse_events
+from kylinbootlab.store import RunStore
+from kylinbootlab.systemd import parse_systemd_blame
 
 TARGET = "kbl@192.168.19.128"
 VMX = r"F:\VMware\Vitural machine\openkylin\openkylin.vmx"

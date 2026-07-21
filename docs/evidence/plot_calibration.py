@@ -5,6 +5,7 @@ Reference palette from dataviz/references/palette.md:
   series-2 #f08a2e (orange) = benchmark
 """
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick
