@@ -127,6 +127,9 @@ class BootAgent:
                 system_prompt=skill.system_prompt, user_message=context
             )
             data = validate_output(raw_text, skill.output_schema)
+            # Keep only fields that the Pydantic model accepts
+            valid_fields = set(model_cls.model_fields.keys())
+            data = {k: v for k, v in data.items() if k in valid_fields}
             return model_cls.model_validate(data)
         except Exception:
             logger.warning(

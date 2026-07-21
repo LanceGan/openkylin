@@ -32,7 +32,7 @@ schema = """
   "title": "SafetyReview",
   "type": "object",
   "properties": {
-    "risk_score": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+    "risk_score": { "type": "number", "maximum": 1.0 },
     "concerns": {
       "type": "array",
       "items": { "type": "string" }
@@ -44,7 +44,7 @@ schema = """
     "portability_concern": { "type": ["string", "null"] },
     "recommendation": { "type": "string", "enum": ["APPROVE", "REVIEW", "REJECT"] }
   },
-  "required": ["risk_score", "concerns", "functional_regression_risks", "recommendation"],
-  "additionalProperties": false
+  "required": ["risk_score", "concerns", "functional_regression_risks", "recommendation"]
+  
 }
 """
