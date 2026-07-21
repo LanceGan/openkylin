@@ -197,6 +197,7 @@ class TestPhase6ExecutorCommands:
             return subprocess.CompletedProcess([], 0, stdout="", stderr="")
 
         e._ssh = record  # type: ignore[assignment]
+        e._ssh_slow = record  # type: ignore[assignment]
         e.apply(plan)
 
         assert any("kbl-phase6.cfg" in c and "tee" in c for c in calls)
@@ -215,6 +216,7 @@ class TestPhase6ExecutorCommands:
             return subprocess.CompletedProcess([], 0, stdout="", stderr="")
 
         e._ssh = record  # type: ignore[assignment]
+        e._ssh_slow = record  # type: ignore[assignment]
         e.apply(plan)
 
         assert any("MODULES=dep" in c for c in calls)
@@ -234,6 +236,7 @@ class TestPhase6ExecutorCommands:
             return subprocess.CompletedProcess([], 0, stdout="", stderr="")
 
         e._ssh = record  # type: ignore[assignment]
+        e._ssh_slow = record  # type: ignore[assignment]
         e.rollback(plan)
 
         assert any("rm -f" in c and "kbl-phase6.cfg" in c for c in calls)
