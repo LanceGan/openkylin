@@ -28,18 +28,11 @@ class ProfileExecutor:
     # -- SSH helpers ----------------------------------------------------------
 
     def _ssh(self, command: str) -> subprocess.CompletedProcess[str]:
-        """Execute a single shell command on the target via SSH.
-
-        When *self.password* is set, ``sudo`` commands are prefixed with
-        ``echo '<password>' | sudo -S`` so they work in non-interactive mode.
-        The *command* is passed as a single string to ``ssh <target> <command>``
-        so that pipes, redirects, and compound statements work correctly.
-        """
-        if self.password is not None and "sudo " in command:
+        """Execute a single shell command on the target via SSH."""
+        if self.password is not None:
             command = command.replace(
                 "sudo ",
                 f"echo '{self.password}' | sudo -S ",
-                1,
             )
         return subprocess.run(
             ["ssh", *_SSH_OPTIONS, self.target, command],
@@ -54,20 +47,15 @@ class ProfileExecutor:
     # -- apply ----------------------------------------------------------------
 
     def apply(self, plan: OptimizationPlan) -> None:
-        """Apply the optimization plan on the target.
-
-        For mask plans: runs ``sudo systemctl mask <unit>``.
-        For drop-in plans: creates the drop-in directory, writes the .conf file
-        via ``sudo tee``, then runs ``sudo systemctl daemon-reload``.
-        """
+        """Apply the optimization plan on the target."""
         if plan.mask_unit is not None:
             self._ssh(f"sudo systemctl mask {plan.mask_unit}")
         elif plan.drop_in_content is not None and plan.drop_in_path is not None:
             drop_in_dir = plan.drop_in_path.rsplit("/", 1)[0]
-            escaped_content = plan.drop_in_content.replace("'", "'\\''")
+            escaped = plan.drop_in_content.replace("'", "'\\''")
             self._ssh(
                 f"sudo mkdir -p {drop_in_dir} && "
-                f"echo '{escaped_content}' | sudo tee {plan.drop_in_path} > /dev/null && "
+                f"echo '{escaped}' | sudo tee {plan.drop_in_path} > /dev/null && "
                 f"sudo systemctl daemon-reload"
             )
         else:
