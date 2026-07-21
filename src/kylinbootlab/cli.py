@@ -646,3 +646,23 @@ def benchmark(
     typer.echo(f"\nBenchmark accuracy: {accuracy:.1%}")
     if accuracy < 0.6:
         raise typer.Exit(code=1)
+
+
+# -- Phase 9 evidence dashboard -----------------------------------------
+
+
+@app.command()
+def dashboard() -> None:
+    """Open the Phase 1-9 evidence dashboard in the default browser."""
+    import webbrowser
+    from pathlib import Path
+
+    dashboard_html = Path("dashboard/dist/index.html")
+    if not dashboard_html.is_file():
+        typer.echo(
+            "Dashboard not built. Run: cd dashboard && npm install && npm run build"
+        )
+        raise typer.Exit(code=1)
+    url = dashboard_html.resolve().as_uri()
+    typer.echo(f"Opening {url}")
+    webbrowser.open(url)
