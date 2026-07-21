@@ -11,6 +11,10 @@ sys.path.insert(0, "src")
 from kylinbootlab.capture import load_command_capture
 from kylinbootlab.optimization.executor import ProfileExecutor
 from kylinbootlab.optimization.plan import build_mask_biometric, build_socket_nm_wait
+from kylinbootlab.optimization.plan import (
+    phase6_initramfs_trim, phase6_kaiming_stagger, phase6_mask_strongswan,
+    phase6_mitigations_off, phase6_parallel_kysdk,
+)
 from kylinbootlab.optimization.scheduler import ABBAScheduler, ProfileStateMachine
 from kylinbootlab.optimization.validator import bootstrap_ci, compute_statistics, verdict
 from kylinbootlab.remote import SubprocessRunner, collect_target_run
@@ -147,8 +151,25 @@ def run_abba(plan_name, plan_func):
     return result
 
 
-c = sys.argv[1] if len(sys.argv) > 1 else "socket-nm-wait"
-if c in ("mask-biometric", "both"):
-    run_abba("mask-biometric", build_mask_biometric)
-if c in ("socket-nm-wait", "both"):
-    run_abba("socket-nm-wait", build_socket_nm_wait)
+CANDIDATES = {
+    # Phase 5
+    "mask-biometric": build_mask_biometric,
+    "socket-nm-wait": build_socket_nm_wait,
+    # Phase 6
+    "mask-strongswan": phase6_mask_strongswan,
+    "kaiming-stagger": phase6_kaiming_stagger,
+    "parallel-kysdk": phase6_parallel_kysdk,
+    "mitigations-off": phase6_mitigations_off,
+    "initramfs-trim": phase6_initramfs_trim,
+}
+
+c = sys.argv[1] if len(sys.argv) > 1 else "mask-strongswan"
+if c == "both":
+    for name, func in CANDIDATES.items():
+        if name.startswith("phase6-") or name in ("mask-biometric", "socket-nm-wait"):
+            continue  # skip old Phase 5 candidates
+        run_abba(name, func)
+elif c in CANDIDATES:
+    run_abba(c, CANDIDATES[c])
+else:
+    print(f"Unknown candidate: {c}. Known: {list(CANDIDATES.keys())}")
