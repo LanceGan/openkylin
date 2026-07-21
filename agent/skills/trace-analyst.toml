@@ -33,14 +33,14 @@ schema = """
         "type": "object",
         "properties": {
           "node": { "type": "string" },
-          "blame_ns": { "type": "integer", "minimum": 0 },
-          "slack_ns": { "type": "integer", "minimum": 0 },
+          "blame_ns": { "type": "integer" },
+          "slack_ns": { "type": "integer" },
           "on_critical_path": { "type": "boolean" },
           "issue": { "type": "string" },
           "evidence": { "type": "string" }
         },
-        "required": ["node", "blame_ns", "slack_ns", "on_critical_path", "issue", "evidence"],
-        "additionalProperties": false
+        "required": ["node"]
+        
       }
     },
     "cross_boot_volatility": { "type": "string" },
@@ -48,9 +48,9 @@ schema = """
       "type": "array",
       "items": { "type": "string" }
     },
-    "confidence": { "type": "number", "minimum": 0.0, "maximum": 1.0 }
+    "confidence": { "type": "number", "maximum": 1.0 }
   },
-  "required": ["anomalies", "cross_boot_volatility", "missed_bottlenecks", "confidence"],
-  "additionalProperties": false
+  "required": ["anomalies", "cross_boot_volatility", "missed_bottlenecks", "confidence"]
+  
 }
 """

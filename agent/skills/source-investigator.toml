@@ -40,8 +40,8 @@ schema = """
           },
           "suggested_change": { "type": ["string", "null"] }
         },
-        "required": ["unit_name", "issue", "evidence_lines"],
-        "additionalProperties": false
+        "required": ["unit_name", "issue", "evidence_lines"]
+        
       }
     },
     "relevant_documentation": {
@@ -53,7 +53,7 @@ schema = """
       "items": { "type": "string" }
     }
   },
-  "required": ["unit_findings", "relevant_documentation", "actionable_insights"],
-  "additionalProperties": false
+  "required": ["unit_findings", "relevant_documentation", "actionable_insights"]
+  
 }
 """

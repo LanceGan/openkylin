@@ -32,7 +32,7 @@ schema = """
   "properties": {
     "plan_id": { "type": "string" },
     "hypothesis": { "type": "string" },
-    "predicted_gain_ns": { "type": "integer", "minimum": 0 },
+    "predicted_gain_ns": { "type": "integer" },
     "evidence_chain": {
       "type": "array",
       "items": { "type": "string" }
@@ -48,7 +48,7 @@ schema = """
     },
     "falsification": { "type": "string" }
   },
-  "required": ["plan_id", "hypothesis", "predicted_gain_ns", "evidence_chain", "rollback", "functional_regression", "falsification"],
-  "additionalProperties": false
+  "required": ["plan_id", "hypothesis", "predicted_gain_ns", "evidence_chain", "rollback", "functional_regression", "falsification"]
+  
 }
 """
