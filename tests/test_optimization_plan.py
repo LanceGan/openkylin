@@ -12,6 +12,11 @@ from kylinbootlab.optimization.plan import (
     build_mask_strongswan,
     build_parallelize_kylin,
     build_socket_nm_wait,
+    phase6_initramfs_trim,
+    phase6_kaiming_stagger,
+    phase6_mask_strongswan,
+    phase6_mitigations_off,
+    phase6_parallel_kysdk,
 )
 
 
@@ -96,3 +101,32 @@ class TestOptimizationPlan:
         assert plan.mask_unit is None
         assert plan.drop_in_content is not None
         assert plan.drop_in_path is not None
+
+
+class TestPhase6Factories:
+    def test_phase6_mask_strongswan_uses_service_mask_category(self) -> None:
+        p = phase6_mask_strongswan()
+        assert p.category == "service_mask"
+        assert p.mask_unit == "strongswan-starter.service"
+
+    def test_phase6_kaiming_stagger_has_after_multi_user(self) -> None:
+        p = phase6_kaiming_stagger()
+        assert p.category == "parallelize"
+        assert p.drop_in_content is not None
+        assert "After=multi-user.target" in p.drop_in_content
+        assert "graphical.target" not in p.drop_in_content
+
+    def test_phase6_mitigations_off_uses_kernel_param_category(self) -> None:
+        p = phase6_mitigations_off()
+        assert p.category == "kernel_param"
+        assert "mitigations=off" in (p.drop_in_content or "")
+
+    def test_phase6_initramfs_trim_has_modules_dep(self) -> None:
+        p = phase6_initramfs_trim()
+        assert p.category == "initramfs_trim"
+        assert "MODULES=dep" in (p.drop_in_content or "")
+
+    def test_phase6_parallel_kysdk_targets_kysdk_units(self) -> None:
+        p = phase6_parallel_kysdk()
+        assert p.category == "parallelize"
+        assert "dbus.service" in (p.drop_in_content or "")
