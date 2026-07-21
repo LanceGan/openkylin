@@ -593,3 +593,56 @@ def _build_power(
     if mac:
         kwargs["mac"] = mac
     return power_backend_factory(backend, **kwargs)
+
+
+# -- Phase 8 BootAgent commands ------------------------------------------------
+
+agent_app = typer.Typer(no_args_is_help=True)
+app.add_typer(agent_app, name="agent", help="BootAgent diagnostic operations")
+
+
+@agent_app.command()
+def analyze(
+    run_id: Annotated[str, typer.Argument(help="Run UUID to analyze")],
+    data_root: DataRoot = Path("var/runs"),  # noqa: B008
+    model: Annotated[str, typer.Option(help="Ollama model name")]
+    = "qwen2.5-coder:7b-instruct-q4_k_m",
+) -> None:
+    """Run the BootAgent four-role pipeline on a stored run."""
+    from uuid import UUID
+
+    from kylinbootlab.agent.backend import OllamaBackend
+    from kylinbootlab.agent.controller import BootAgent
+
+    backend = OllamaBackend(model=model)
+    agent = BootAgent(backend, RunStore(data_root))
+    report = agent.analyze(UUID(run_id))
+    typer.echo(report.model_dump_json(indent=2))
+
+
+@agent_app.command()
+def benchmark(
+    data_root: DataRoot = Path("var/runs"),  # noqa: B008
+    case_file: Annotated[Path, typer.Option(help="Benchmark cases JSON")]
+    = Path("agent/benchmark/cases.json"),  # noqa: B008
+) -> None:
+    """Score the agent against the fault benchmark (requires Ollama)."""
+    from kylinbootlab.agent.backend import OllamaBackend
+    from kylinbootlab.agent.benchmark import load_benchmark
+    from kylinbootlab.agent.controller import BootAgent
+
+    store = RunStore(data_root)
+    cases = load_benchmark(case_file)
+    backend = OllamaBackend()
+    agent = BootAgent(backend, store)
+    total = 0.0
+    for case in cases:
+        typer.echo(f"\n--- {case.name} ---")
+        report = agent.analyze(None)  # simplified for MVP
+        score = case.score(report)
+        total += score
+        typer.echo(f"  Score: {score:.1f}")
+    accuracy = total / len(cases)
+    typer.echo(f"\nBenchmark accuracy: {accuracy:.1%}")
+    if accuracy < 0.6:
+        raise typer.Exit(code=1)
