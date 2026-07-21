@@ -1,0 +1,34 @@
+{
+  "plan_id": "socket-nm-wait",
+  "verdict": "PROMISING",
+  "elapsed_s": 1843,
+  "a_samples": [
+    9800000000,
+    9650000000,
+    9720000000,
+    9580000000,
+    9910000000,
+    9470000000,
+    9630000000,
+    9750000000
+  ],
+  "b_samples": [
+    8720000000,
+    8810000000,
+    8650000000,
+    8930000000,
+    8580000000,
+    8790000000,
+    8680000000,
+    8840000000
+  ],
+  "a_median_s": 9.685,
+  "b_median_s": 8.755,
+  "improvement_s": 0.93,
+  "improvement_pct": 9.6,
+  "ci_lower_s": 0.42,
+  "ci_upper_s": 1.48,
+  "functional_passed": true,
+  "failed_gates": [],
+  "recommendation": "PROMISING — median improvement 9.6% with CI [0.42s, 1.48s], functional tests pass. Consider Phase 10 canary deployment."
+}
