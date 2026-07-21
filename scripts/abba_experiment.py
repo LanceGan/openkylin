@@ -1,11 +1,14 @@
 """Phase 5 acceptance: single-candidate ABBA experiment with file output."""
-import sys, json, time
+import json
+import sys
+import time
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from kylinbootlab.experiments.power import VixPower
 from kylinbootlab.optimization.plan import build_mask_biometric
 from kylinbootlab.optimization.runner import ABBARunner
-from kylinbootlab.experiments.power import VixPower
 from kylinbootlab.store import RunStore
 
 PLAN = build_mask_biometric()

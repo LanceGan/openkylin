@@ -4,22 +4,24 @@ Runs 2 warmup + 16 measured boots (4 blocks of A-B-B-A) for one candidate,
 using Phase 2 experiment queue directly.  Profile switching is done between
 each experiment record by the controller (not the runner).
 """
-import sys, json, time, subprocess
-from pathlib import Path
-from uuid import uuid4
+import json
+import subprocess
+import sys
+import time
 from datetime import UTC, datetime
+from pathlib import Path
 
 sys.path.insert(0, "src")
-from kylinbootlab.optimization.plan import build_mask_biometric, build_socket_nm_wait
-from kylinbootlab.optimization.executor import ProfileExecutor
-from kylinbootlab.optimization.scheduler import ABBAScheduler, ProfileStateMachine
-from kylinbootlab.optimization.validator import bootstrap_ci, compute_statistics, verdict
-from kylinbootlab.experiments.queue import ExperimentQueue
+from kylinbootlab.capture import load_command_capture
 from kylinbootlab.experiments.contracts import ExperimentRecord
 from kylinbootlab.experiments.orchestrator import ExperimentOrchestrator
 from kylinbootlab.experiments.power import VixPower
+from kylinbootlab.experiments.queue import ExperimentQueue
+from kylinbootlab.optimization.executor import ProfileExecutor
+from kylinbootlab.optimization.plan import build_mask_biometric, build_socket_nm_wait
+from kylinbootlab.optimization.scheduler import ABBAScheduler, ProfileStateMachine
+from kylinbootlab.optimization.validator import bootstrap_ci, compute_statistics, verdict
 from kylinbootlab.store import RunStore
-from kylinbootlab.capture import load_command_capture
 
 TARGET = "kbl@192.168.19.128"
 PASSWORD = "12345678"
@@ -120,7 +122,7 @@ def run_abba(plan_name, plan_func):
                         actual_run_id = r.run_id
                         break
                 if actual_run_id is None:
-                    print(f"  WARNING: no run_id in queue record", flush=True)
+                    print("  WARNING: no run_id in queue record", flush=True)
                     continue
                 bt = collect_boot_time(STORE, actual_run_id)
                 if bt:
