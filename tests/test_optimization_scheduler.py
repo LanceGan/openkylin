@@ -1,4 +1,9 @@
-"""Unit tests for ABBAScheduler and ProfileStateMachine."""
+"""Unit tests for ABBAScheduler, ProfileStateMachine, and ProfileExecutor."""
+
+from __future__ import annotations
+
+import subprocess
+from typing import Any
 
 import pytest
 
@@ -175,3 +180,61 @@ class TestProfileExecutorCommandConstruction:
         assert plan.mask_unit is not None
         cmd = f"sudo systemctl unmask {plan.mask_unit}"
         assert cmd == "sudo systemctl unmask biometric-authentication.service"
+
+
+class TestPhase6ExecutorCommands:
+    def test_mitigations_off_apply_writes_grub_config(self) -> None:
+        from kylinbootlab.optimization.executor import ProfileExecutor
+        from kylinbootlab.optimization.plan import phase6_mitigations_off
+
+        e = ProfileExecutor(target="kbl@target", password="testpass")
+        plan = phase6_mitigations_off()
+
+        calls: list[str] = []
+
+        def record(cmd: str) -> Any:
+            calls.append(cmd)
+            return subprocess.CompletedProcess([], 0, stdout="", stderr="")
+
+        e._ssh = record  # type: ignore[assignment]
+        e.apply(plan)
+
+        assert any("kbl-phase6.cfg" in c and "tee" in c for c in calls)
+        assert any("update-grub" in c for c in calls)
+
+    def test_initramfs_trim_apply_writes_config_and_runs_update_initramfs(self) -> None:
+        from kylinbootlab.optimization.executor import ProfileExecutor
+        from kylinbootlab.optimization.plan import phase6_initramfs_trim
+
+        e = ProfileExecutor(target="kbl@target", password="testpass")
+        plan = phase6_initramfs_trim()
+        calls: list[str] = []
+
+        def record(cmd: str) -> Any:
+            calls.append(cmd)
+            return subprocess.CompletedProcess([], 0, stdout="", stderr="")
+
+        e._ssh = record  # type: ignore[assignment]
+        e.apply(plan)
+
+        assert any("MODULES=dep" in c for c in calls)
+        assert any("update-initramfs" in c for c in calls)
+        assert any("cp /boot/initrd" in c and ".kbl-backup" in c for c in calls)
+
+    def test_mitigations_off_rollback_removes_config_and_updates_grub(self) -> None:
+        from kylinbootlab.optimization.executor import ProfileExecutor
+        from kylinbootlab.optimization.plan import phase6_mitigations_off
+
+        e = ProfileExecutor(target="kbl@target", password="testpass")
+        plan = phase6_mitigations_off()
+        calls: list[str] = []
+
+        def record(cmd: str) -> Any:
+            calls.append(cmd)
+            return subprocess.CompletedProcess([], 0, stdout="", stderr="")
+
+        e._ssh = record  # type: ignore[assignment]
+        e.rollback(plan)
+
+        assert any("rm -f" in c and "kbl-phase6.cfg" in c for c in calls)
+        assert any("update-grub" in c for c in calls)

@@ -51,13 +51,33 @@ class ProfileExecutor:
         if plan.mask_unit is not None:
             self._ssh(f"sudo systemctl mask {plan.mask_unit}")
         elif plan.drop_in_content is not None and plan.drop_in_path is not None:
-            drop_in_dir = plan.drop_in_path.rsplit("/", 1)[0]
-            escaped = plan.drop_in_content.replace("'", "'\\''")
-            self._ssh(
-                f"sudo mkdir -p {drop_in_dir} && "
-                f"echo '{escaped}' | sudo tee {plan.drop_in_path} > /dev/null && "
-                f"sudo systemctl daemon-reload"
-            )
+            if plan.category == "kernel_param":
+                # Write grub config + update-grub
+                escaped = plan.drop_in_content.replace("'", "'\\''")
+                self._ssh(
+                    f"sudo mkdir -p $(dirname {plan.drop_in_path}) && "
+                    f"echo '{escaped}' | sudo tee {plan.drop_in_path} > /dev/null && "
+                    f"sudo update-grub"
+                )
+            elif plan.category == "initramfs_trim":
+                # Backup current initrd, write config, rebuild initramfs
+                escaped = plan.drop_in_content.replace("'", "'\\''")
+                kernel = "$(uname -r)"
+                self._ssh(
+                    f"sudo mkdir -p $(dirname {plan.drop_in_path}) && "
+                    f"echo '{escaped}' | sudo tee {plan.drop_in_path} > /dev/null && "
+                    f"sudo cp /boot/initrd.img-{kernel} /boot/initrd.img-{kernel}.kbl-backup && "
+                    f"sudo update-initramfs -u -k all"
+                )
+            else:
+                # Standard drop-in (Phase 5 path)
+                drop_in_dir = plan.drop_in_path.rsplit("/", 1)[0]
+                escaped = plan.drop_in_content.replace("'", "'\\''")
+                self._ssh(
+                    f"sudo mkdir -p {drop_in_dir} && "
+                    f"echo '{escaped}' | sudo tee {plan.drop_in_path} > /dev/null && "
+                    f"sudo systemctl daemon-reload"
+                )
         else:
             raise ValueError(
                 f"Plan {plan.plan_id} has neither mask_unit nor drop_in content"
@@ -73,10 +93,19 @@ class ProfileExecutor:
         if plan.mask_unit is not None:
             self._ssh(f"sudo systemctl unmask {plan.mask_unit}")
         elif plan.drop_in_path is not None:
-            self._ssh(
-                f"sudo rm -f {plan.drop_in_path} && "
-                f"sudo systemctl daemon-reload"
-            )
+            if plan.category == "kernel_param":
+                self._ssh(
+                    f"sudo rm -f {plan.drop_in_path} && sudo update-grub"
+                )
+            elif plan.category == "initramfs_trim":
+                self._ssh(
+                    f"sudo rm -f {plan.drop_in_path} && sudo update-initramfs -u -k all"
+                )
+            else:
+                self._ssh(
+                    f"sudo rm -f {plan.drop_in_path} && "
+                    f"sudo systemctl daemon-reload"
+                )
 
     def verify_applied(self, plan: OptimizationPlan) -> bool:
         """Check whether the optimization is currently applied on the target."""
