@@ -152,7 +152,7 @@ def validate_output(text: str, json_schema: dict[str, Any]) -> dict[str, Any]:
     return data
 
 
-def _flatten_objects(data: dict) -> None:
+def _flatten_objects(data: dict[str, Any]) -> None:
     """Extract scalar values from overly-nested object structures.
 
     Small models sometimes emit ``{value: N, evidence_chain: [...]}``
@@ -161,9 +161,9 @@ def _flatten_objects(data: dict) -> None:
     """
     for key, value in list(data.items()):
         if isinstance(value, dict):
-            if key.endswith("_ns") and "value" in value:
-                data[key] = value["value"]
-            elif key == "predicted_gain_ns" and "value" in value:
+            is_duration = key.endswith("_ns") and "value" in value
+            is_gain = key == "predicted_gain_ns" and "value" in value
+            if is_duration or is_gain:
                 data[key] = value["value"]
             else:
                 _flatten_objects(value)
@@ -179,7 +179,7 @@ def _flatten_objects(data: dict) -> None:
                         _flatten_objects(item)
 
 
-def _clamp_negatives(data: dict) -> None:
+def _clamp_negatives(data: dict[str, Any]) -> None:
     """Recursively clamp negative integers to 0 for *_ns and *_count fields."""
     for key, value in list(data.items()):
         if isinstance(value, int) and value < 0 and (
@@ -194,7 +194,7 @@ def _clamp_negatives(data: dict) -> None:
                     _clamp_negatives(item)
 
 
-def _replace_nulls(data: dict) -> None:
+def _replace_nulls(data: dict[str, Any]) -> None:
     """Recursively replace JSON null values with type-safe defaults."""
     for key, value in list(data.items()):
         if value is None:
@@ -220,7 +220,7 @@ def _null_default(key: str) -> object:
     return ""
 
 
-def _fill_defaults(data: dict, schema: dict) -> None:
+def _fill_defaults(data: dict[str, Any], schema: dict[str, Any]) -> None:
     """Recursively fill missing required properties with type-safe defaults."""
     if "properties" not in schema:
         return
@@ -241,11 +241,14 @@ def _fill_defaults(data: dict, schema: dict) -> None:
         # Recurse into nested objects and arrays
         if isinstance(data.get(prop_name), dict):
             _fill_defaults(data[prop_name], prop_schema)
-        elif isinstance(data.get(prop_name), list):
-            if "items" in prop_schema and isinstance(prop_schema["items"], dict):
-                for item in data[prop_name]:
-                    if isinstance(item, dict):
-                        _fill_defaults(item, prop_schema["items"])
+        elif (
+            isinstance(data.get(prop_name), list)
+            and "items" in prop_schema
+            and isinstance(prop_schema["items"], dict)
+        ):
+            for item in data[prop_name]:
+                if isinstance(item, dict):
+                    _fill_defaults(item, prop_schema["items"])
 
 
 _FIELD_ALIASES = {
@@ -253,7 +256,6 @@ _FIELD_ALIASES = {
     "service_name": "node",
     "service": "node",
     "unit": "node",
-    "name": "node",
     "blame_ms": "blame_ns",
     "duration_ns": "blame_ns",
     "duration_ms": "blame_ns",
@@ -261,7 +263,7 @@ _FIELD_ALIASES = {
 }
 
 
-def _normalize_field_aliases(data: dict) -> dict:
+def _normalize_field_aliases(data: dict[str, Any]) -> dict[str, Any]:
     """Rename known field-name aliases that small LLMs frequently produce.
 
     Operates recursively on nested dicts and lists of dicts.
