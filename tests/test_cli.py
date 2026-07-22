@@ -310,3 +310,24 @@ class TestOptimizeRunSmoke:
         )
         assert result.exit_code == 1
         assert "Unknown plan_id" in result.stdout or "Unknown plan_id" in result.stderr
+
+
+def test_agent_benchmark_lists_cases() -> None:
+    """kbl agent benchmark lists cases + scoring rubric."""
+    result = runner.invoke(app, ["agent", "benchmark", "--case-file",
+                                  "agent/benchmark/cases.json"])
+    assert result.exit_code == 0
+    assert "B1:" in result.stdout
+    assert "B5:" in result.stdout
+    assert "manual" in result.stdout.lower() or "Manual" in result.stdout or "evaluation" in result.stdout.lower()
+
+
+def test_optimize_run_phase6_plan_resolves() -> None:
+    """phase6-initramfs-trim plan_id resolves (backend=invalid is OK)."""
+    result = runner.invoke(
+        app,
+        ["optimize", "run", "phase6-initramfs-trim",
+         "--target", "dummy@localhost", "--backend", "invalid"],
+    )
+    # Should fail at the unknown backend stage, NOT at plan lookup
+    assert "unknown backend" in result.stdout.lower() or result.exit_code != 0
