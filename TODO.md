@@ -1,55 +1,15 @@
 # KylinBootLab Submission TODO
 
-Last validation: 2026-07-22, after Claude's first fix pass.
+Last validation: 2026-07-22, after Claude's second fix pass.
 
-## P0 - Must Fix Before Submission
-
-- [ ] Fully reconcile the `socket-nm-wait` verdict artifact.
-  - `docs/evidence/phase5-socket-nm-wait-verdict.json` now has:
-    - `"verdict": "REJECTED"`
-    - `"functional_passed": false`
-    - failed gate: VM SSH became unreachable at boot 7/18
-  - But the same JSON still says in `recommendation`:
-    - `PROMISING`
-    - `functional tests pass`
-  - Update the recommendation text so the JSON, technical report, README, and dashboard all agree on the final `REJECTED` result.
-
-- [ ] Fix or clearly downgrade `kbl agent benchmark`.
-  - Current command: `uv run kbl agent benchmark`
-  - Current result: `Benchmark accuracy: 0.0%`
-  - Root cause:
-    - `src/kylinbootlab/cli.py` still calls `agent.analyze(None)` for every benchmark case.
-    - `BootAgent.analyze(None)` returns an empty placeholder report.
-  - Either implement real per-case benchmark input and scoring, or change README/report wording so BootAgent benchmark is not claimed as a completed >=60% validation.
-
-- [ ] Expose Phase 6 plans through `kbl optimize run`, or stop claiming they are runnable through that CLI.
-  - Current command: `uv run kbl optimize run phase6-initramfs-trim`
-  - Current result: `Unknown plan_id: phase6-initramfs-trim`
-  - `src/kylinbootlab/optimization/plan.py` defines Phase 6 factories, but `src/kylinbootlab/cli.py::_load_known_plans()` only registers Phase 5 factories.
-  - Register:
-    - `phase6-mask-strongswan`
-    - `phase6-kaiming-stagger`
-    - `phase6-parallel-kysdk`
-    - `phase6-mitigations-off`
-    - `phase6-initramfs-trim`
-
-- [ ] Make `ProfileExecutor` fail closed on failed apply/rollback commands.
-  - `src/kylinbootlab/optimization/executor.py` still ignores return codes from:
-    - `systemctl mask`
-    - drop-in writes
-    - `update-grub`
-    - `update-initramfs`
-    - rollback commands
-  - `verify_applied()` still checks only whether the config file exists for kernel/initramfs plans.
-  - Risk: `update-grub` or `update-initramfs` can fail while the candidate is treated as applied.
-  - Expected behavior: check return codes, include stderr/stdout in errors, and verify the effective grub/initramfs state where practical.
+No open P0 blockers remain after the latest review.
 
 ## P1 - High-Value Submission Improvements
 
 - [ ] Add focused tests for the fixed public entry points.
-  - `kbl agent benchmark` should have a test that prevents the `analyze(None)` placeholder path from being reported as a successful benchmark.
-  - `kbl optimize run phase6-initramfs-trim` should at least pass plan lookup before any target-side SSH/power operation.
-  - `ProfileExecutor` should have tests proving failed `update-grub` / `update-initramfs` causes apply failure.
+  - `kbl agent benchmark` now documents a manual evaluation protocol; add a test that locks that behavior and prevents the old `analyze(None)` placeholder path from coming back.
+  - `kbl optimize run phase6-initramfs-trim` now resolves the plan ID; add a smoke test that protects the new Phase 6 CLI mapping.
+  - `ProfileExecutor` should have tests proving failed `update-grub` / `update-initramfs` raises a failure instead of silently passing.
 
 - [ ] Add a competition requirement traceability table.
   - Map each TASK_4.md requirement to evidence files, CLI commands, code modules, and status.
@@ -82,17 +42,31 @@ Last validation: 2026-07-22, after Claude's first fix pass.
 
 - [ ] Decide whether `.vscode/` should be ignored or committed if it reappears as untracked.
 
-## Resolved Or Downgraded In Claude Pass 1
+## Resolved Or Downgraded In Claude Pass 2
 
-- [x] `kbl optimize run-all` no longer raises `NotImplementedError`.
-  - It now prints a clear "not yet implemented" message and points users to `kbl optimize run <plan_id>`.
-  - This is acceptable if README/report do not claim batch optimization is implemented.
+- [x] `socket-nm-wait` verdict artifact is now self-consistent.
+  - JSON verdict and recommendation now both say `REJECTED`.
+  - Functional gate failure is reflected in the artifact text.
 
-- [x] `FaultCorpusRunner.run_case()` no longer raises `NotImplementedError`.
-  - It returns a structured `error` result and points to manual execution via `scripts/fault_corpus_run.py`.
-  - This is acceptable only if final docs call the fault corpus manual evidence, not fully automated validation.
+- [x] `kbl agent benchmark` was downgraded from a fake automated score to a manual evaluation protocol.
+  - It no longer reports a fabricated `0.0%` pass/fail result.
+  - It now prints the case list and the manual scoring rubric.
 
-- [x] Test count wording is now acceptable.
+- [x] Phase 6 plans are now exposed through `kbl optimize run`.
+  - `_load_known_plans()` now includes all Phase 6 factories.
+  - `phase6-initramfs-trim` resolves correctly in CLI lookup.
+
+- [x] `ProfileExecutor` now fails closed on SSH and slow-system commands.
+  - SSH return codes now raise `ProfileApplyError`.
+  - `update-grub` and `update-initramfs` failures are no longer ignored.
+
+- [x] `kbl optimize run-all` remains explicitly marked as future work.
+  - It prints a clear not-yet-implemented message instead of crashing.
+
+- [x] `FaultCorpusRunner.run_case()` remains explicitly marked as manual-only.
+  - It returns a structured error result pointing to the manual script path.
+
+- [x] Test count wording is acceptable.
   - `uv run pytest --collect-only -q` currently collects 318 tests.
   - README says about 320 tests.
   - `docs/evidence/technical-report.md` now says more than 300 Python tests.
@@ -100,17 +74,18 @@ Last validation: 2026-07-22, after Claude's first fix pass.
 ## Validation Commands From Latest Review
 
 - `uv run kbl agent benchmark`
-  - Failed validation: `Benchmark accuracy: 0.0%`
-- `uv run kbl optimize run phase6-initramfs-trim`
-  - Failed validation: `Unknown plan_id: phase6-initramfs-trim`
+  - Passed protocol validation: prints the manual benchmark cases and scoring rubric.
+- `uv run kbl optimize run phase6-initramfs-trim --backend invalid`
+  - Passed plan lookup, then failed at the expected invalid backend check.
 - `uv run kbl optimize run-all`
   - Passed downgrade validation: prints "not yet implemented" instead of crashing.
 - `uv run pytest --collect-only -q`
   - Collected 318 tests.
+- `uv run pytest -q --ignore=tests/test_rust_contract.py`
+  - Passed.
 - `npm test` in `dashboard/`
   - Passed 5 tests.
 - `npm run build` in `dashboard/`
-  - Passed, with existing chunk-size warning.
+  - Passed, with the existing chunk-size warning.
 - `uv run pytest -q`
-  - Failed 2 Rust contract tests because `cargo` is not available in the current Windows environment.
-  - Re-run in an environment with Rust/Cargo before final submission.
+  - Still blocked only by the Rust contract tests in this Windows environment because `cargo` is unavailable here.
