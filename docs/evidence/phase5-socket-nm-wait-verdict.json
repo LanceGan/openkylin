@@ -1,0 +1,36 @@
+{
+  "plan_id": "socket-nm-wait",
+  "verdict": "REJECTED",
+  "elapsed_s": 1843,
+  "a_samples": [
+    9800000000,
+    9650000000,
+    9720000000,
+    9580000000,
+    9910000000,
+    9470000000,
+    9630000000,
+    9750000000
+  ],
+  "b_samples": [
+    8720000000,
+    8810000000,
+    8650000000,
+    8930000000,
+    8580000000,
+    8790000000,
+    8680000000,
+    8840000000
+  ],
+  "a_median_s": 9.685,
+  "b_median_s": 8.755,
+  "improvement_s": 0.93,
+  "improvement_pct": 9.6,
+  "ci_lower_s": 0.42,
+  "ci_upper_s": 1.48,
+  "functional_passed": false,
+  "failed_gates": [
+    "functional regression test failed \u2014 VM SSH became unreachable at boot 7/18"
+  ],
+  "recommendation": "REJECTED \u2014 VM SSH became unreachable at boot 7/18. Early boots (1-6) showed PROMISING signal (+9.6%) but ExecStart= override caused functional regression: NetworkManager failed to bring up network on a cold boot. Safety gate correctly rejected the candidate."
+}

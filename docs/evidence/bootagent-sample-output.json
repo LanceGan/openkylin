@@ -1,0 +1,54 @@
+{
+  "run_id": "00000000-0000-4000-a000-000000000001",
+  "trace": {
+    "anomalies": [
+      {
+        "node": "serviceA",
+        "blame_ns": 500000000,
+        "slack_ns": 0,
+        "on_critical_path": false,
+        "issue": "",
+        "evidence": ""
+      },
+      {
+        "node": "serviceB",
+        "blame_ns": 300000000,
+        "slack_ns": 0,
+        "on_critical_path": false,
+        "issue": "",
+        "evidence": ""
+      }
+    ],
+    "cross_boot_volatility": "",
+    "missed_bottlenecks": [],
+    "confidence": 0.0
+  },
+  "source": {
+    "unit_findings": [],
+    "relevant_documentation": [],
+    "actionable_insights": []
+  },
+  "experiment": {
+    "plan_id": "",
+    "hypothesis": "",
+    "predicted_gain_ns": 0,
+    "evidence_chain": [],
+    "drop_in_content": "[Service]\nEnvironment=BOOT_PARAMS=\"quiet splash\"\n",
+    "rollback": [],
+    "functional_regression": [],
+    "falsification": ""
+  },
+  "safety": {
+    "risk_score": 0.2,
+    "concerns": [
+      "Data loss risk due to disk operations.",
+      "Unbootable system risk."
+    ],
+    "functional_regression_risks": [
+      "Network services: Experimenting with network configurations could disrupt connectivity for other services or the host itself.",
+      "Filesystem operations: Performing extensive filesystem modifications might cause issues with file integrity and access permissions."
+    ],
+    "portability_concern": null,
+    "recommendation": "REVIEW"
+  }
+}

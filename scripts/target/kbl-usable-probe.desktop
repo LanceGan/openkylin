@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=KBL Usable Probe
+Comment=KylinBootLab session-side readiness probe (Phase 3)
+Exec=/usr/local/bin/kbl-bootprobe usable-probe
+X-GNOME-Autostart-enabled=true
+NoDisplay=true
