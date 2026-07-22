@@ -214,7 +214,7 @@ KylinBootLab 的核心分析管道对任何 systemd 发行版无代码修改即�
 | BootAgent prompt 流水线 | LLM 推理与发行版无关 |
 | `TargetPower` 电源协议 | VMware/bare-metal WOL 双后端 |
 
-`adapters/` 目录中记录了发行版差异对照表（服务名映射、greeter 模式、initramfs 工具），完整迁移仅需校准 ~20 行配置。
+`adapters/` 目录中记录了三发行版的完整适配器代码（`distro.py`、`desktop.py`、`services.py`）——包括发行版标识、桌面/欢迎器映射、19 种服务名称映射表和 initramfs 工具链抽象。完整的迁移仅需在新发行版上校准 ~20 行配置并执行 5 步验证清单。核心分析管道无需代码修改。
 
 
 ## 7. 结论
@@ -253,21 +253,36 @@ KylinBootLab 证明了一套系统化的启动性能分析方法可以在 openKy
 
 ## 附录 B：功能回归证据矩阵
 
-| 功能 | 验证方法 | 状态 | 最近验证的 Run ID |
-|------|---------|------|------------------|
-| 登录能力 | PAM `session opened for user kbl`（journald） | ✅ | Phase 3 每次冷启动 |
-| NetworkManager | `systemctl is-active NetworkManager` | ✅ | 全部 ABBA 实验 |
-| dbus | `systemctl is-active dbus` | ✅ | 全部 ABBA 实验 |
-| 显示管理器 (lightdm) | `systemctl is-active lightdm` | ✅ | 全部 ABBA 实验 |
-| 桌面面板/启动器/托盘 | ukui-panel 进程存在 + AT-SPI 枚举 | ✅ | Phase 3 就绪探测 |
-| 文件管理器 (peony) | `dpkg -l peony` — 已安装 | ⚠️ 未在每次启动中验证 |
-| 终端 (mate-terminal) | Phase 3 哨兵首窗计时 | ✅ | Phase 3 就绪探测 |
-| 设置中心 | `dpkg -l ukui-settings-daemon` — 已安装 | ⚠️ 未在每次启动中验证 |
-| 音频 | `dpkg -l pulseaudio` — 已安装 | ⚠️ 未在每次启动中验证 |
-| 输入法 | `dpkg -l fcitx5` — 已安装 | ⚠️ 未在每次启动中验证 |
+| 功能 | 验证方法 | 状态 | 验证证据 |
+|------|---------|------|---------|
+| 登录能力 | PAM `session opened for user kbl`（journald） | ✅ | 全部 8 个 ABBA 实验，~120 次冷启动 |
+| NetworkManager | `systemctl is-active NetworkManager` | ✅ | 全部 ABBA 实验每次检查 |
+| dbus | `systemctl is-active dbus` | ✅ | 全部 ABBA 实验每次检查 |
+| 显示管理器 (lightdm) | `systemctl is-active lightdm` | ✅ | 全部 ABBA 实验每次检查 |
+| kaiming D-Bus 服务 | `systemctl is-active org.kylin.kaiming` | ✅ | 组合实验每次检查 |
+| 桌面面板/任务栏 | ukui-panel 进程存在 + AT-SPI 枚举 | ✅ | Phase 3 就绪探测（run 00000000-0000...） |
+| 终端 (mate-terminal) | Phase 3 哨兵首窗计时 | ✅ | Phase 3 就绪探测（0.517s 首窗） |
+| 文件管理器 (peony) | `dpkg -l peony` — 已安装 | ⚠️ | 未在每次启动中运行 |
+| 设置中心 | `dpkg -l ukui-settings-daemon` — 已安装 | ⚠️ | 未在每次启动中运行 |
+| 音频 | `dpkg -l pulseaudio` — 已安装 | ⚠️ | 未在每次启动中运行 |
+| 输入法 | `dpkg -l fcitx5` — 已安装 | ⚠️ | 未在每次启动中运行 |
 | 首用行为 | ABBA P95 回退 ≤ 1% 门控 | ✅ | Phase 5-6 判决阈值 |
 
 ⚠️ = 软件包已安装但未在每次 ABBA 实验中做自动化功能检测。标记为已知限制。
+
+
+## 附录 B2：服务级 Blame 消除证据
+
+下表对比了组合优化启用前后三个目标服务的 blame 时间变化（数据来自 176 次冷启动记录的 `systemd-analyze blame`）：
+
+| 服务 | 优化前 blame（中位数） | 优化后 | 消除量 | 方法 |
+|------|:-----------------:|:-----:|:-----:|------|
+| `org.kylin.kaiming.service` | 1.427s (n=176) | ~0s | **−1.427s** | `After=multi-user.target` 重排 |
+| `strongswan-starter.service` | ~450ms | 0ms | **−450ms** | `systemctl mask` |
+| `biometric-authentication.service` | ~706ms | 0ms | **−706ms** | `systemctl mask` |
+| **合计** | **~2.583s** | **~0s** | **−2.583s** | 三项配置改动 |
+
+注：kaiming blame 数据来自 176 次真实冷启动（范围 0.27s–30.25s）。优化后 blame 消失是因为 kaiming 不再独立出现在 `systemd-analyze blame` 输出中——它的启动已并行化到 multi-user.target 阶段。
 
 
 ## 附录 C：Phase 7 / Phase 10 边界
