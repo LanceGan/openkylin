@@ -146,7 +146,7 @@ Agent **不执行** shell 命令——所有输出为 JSON Schema 验证的结�
 | 指标 | 值 |
 |------|-----|
 | 提交数 | 84（7 月 15-21 日） |
-| Python 测试 | 176 个，全部通过 |
+| Python 测试 | 超过 300 个，全部通过 |
 | Rust 测试 | 54 个，全部通过（在 openKylin 目标机上编译并执行） |
 | 静态检查 | ruff ✅ / mypy strict ✅ / cargo clippy -D warnings ✅ |
 | 代码覆盖率 | 91%（Python，Phase 1 基线） |
