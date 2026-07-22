@@ -1,44 +1,7 @@
-{
-  "cases": [
-    {
-      "id": "B1",
-      "name": "dbus-exclusive-delay",
-      "ground_truth": {
-        "anomaly_node": "dbus.service",
-        "expected_issue": "high blame on critical path"
-      }
-    },
-    {
-      "id": "B2",
-      "name": "bluetooth-large-slack",
-      "ground_truth": {
-        "anomaly_node": "ukui-bluetooth.service",
-        "expected_issue": "high blame but large slack"
-      }
-    },
-    {
-      "id": "B3",
-      "name": "kaiming-stagger-positive",
-      "ground_truth": {
-        "anomaly_node": "org.kylin.kaiming.service",
-        "expected_issue": "After=graphical.target causes delay"
-      }
-    },
-    {
-      "id": "B4",
-      "name": "socket-nm-wait-regression",
-      "ground_truth": {
-        "anomaly_node": "NetworkManager-wait-online.service",
-        "expected_issue": "functional regression from drop-in"
-      }
-    },
-    {
-      "id": "B5",
-      "name": "dbus-lightdm-combined",
-      "ground_truth": {
-        "anomaly_node": "dbus.service and lightdm.service",
-        "expected_issue": "two independent bottlenecks"
-      }
-    }
-  ]
-}
+{"cases": [
+  {"id":"B1","name":"dbus-exclusive-delay","ground_truth":{"anomaly_node":"dbus.service","expected_issue":"high blame on critical path"}},
+  {"id":"B2","name":"bluetooth-large-slack","ground_truth":{"anomaly_node":"ukui-bluetooth.service","expected_issue":"high blame but large slack"}},
+  {"id":"B3","name":"kaiming-stagger-positive","ground_truth":{"anomaly_node":"org.kylin.kaiming.service","expected_issue":"After=graphical.target causes delay"}},
+  {"id":"B4","name":"socket-nm-wait-regression","ground_truth":{"anomaly_node":"NetworkManager-wait-online.service","expected_issue":"functional regression from drop-in"}},
+  {"id":"B5","name":"dbus-lightdm-combined","ground_truth":{"anomaly_node":"dbus.service and lightdm.service","expected_issue":"two independent bottlenecks"}}
+]}
