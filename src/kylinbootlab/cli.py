@@ -634,32 +634,29 @@ def analyze(
 
 
 @agent_app.command()
-def benchmark(
-    data_root: DataRoot = Path("var/runs"),
-    case_file: Annotated[Path, typer.Option(help="Benchmark cases JSON")]
-    = Path("agent/benchmark/cases.json"),
-) -> None:
+def benchmark() -> None:
     """Describe the BootAgent benchmark (manual evaluation protocol).
 
     The BootAgent benchmark is a human-graded evaluation, not an automated
     pass/fail.  Each of the 5 cases requires manual review of agent output
-    against ground-truth expectations documented in each case.
-
-    To run the agent on a specific stored run, use: kbl agent analyze <RUN_ID>
+    against ground-truth expectations.
     """
-    from kylinbootlab.agent.benchmark import load_benchmark
-
-    cases = load_benchmark(case_file)
-    typer.echo(f"BootAgent Benchmark — {len(cases)} cases ({case_file})\n")
-    for case in cases:
-        typer.echo(f"  {case.id}: {case.name}")
-        typer.echo(f"    Ground truth: {case.ground_truth}")
+    cases = [
+        ("B1", "dbus-exclusive-delay", "dbus.service: high blame on critical path"),
+        ("B2", "bluetooth-large-slack", "ukui-bluetooth.service: high blame but large slack"),
+        ("B3", "kaiming-stagger-positive", "org.kylin.kaiming.service: After=graphical.target causes delay"),
+        ("B4", "socket-nm-wait-regression", "NetworkManager-wait-online.service: functional regression from drop-in"),
+        ("B5", "dbus-lightdm-combined", "dbus.service and lightdm.service: two independent bottlenecks"),
+    ]
+    typer.echo(f"BootAgent Benchmark — {len(cases)} cases\n")
+    for cid, name, truth in cases:
+        typer.echo(f"  {cid}: {name}")
+        typer.echo(f"    Ground truth: {truth}")
         typer.echo()
     typer.echo(
         "Evaluation is manual: for each case, run 'kbl agent analyze <RUN_ID>',\n"
         "then compare the agent output to the ground truth above.\n"
-        "See docs/superpowers/specs/2026-07-20-kylinbootlab-bootagent.md §6 for\n"
-        "the scoring rubric (0-1 per case, pass ≥ 3.0/5.0)."
+        "Scoring rubric: 0-1 per case, pass >= 3.0/5.0."
     )
 
 

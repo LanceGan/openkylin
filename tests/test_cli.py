@@ -314,8 +314,7 @@ class TestOptimizeRunSmoke:
 
 def test_agent_benchmark_lists_cases() -> None:
     """kbl agent benchmark lists cases + scoring rubric."""
-    result = runner.invoke(app, ["agent", "benchmark", "--case-file",
-                                  "agent/benchmark/cases.json"])
+    result = runner.invoke(app, ["agent", "benchmark"])
     assert result.exit_code == 0
     assert "B1:" in result.stdout
     assert "B5:" in result.stdout
