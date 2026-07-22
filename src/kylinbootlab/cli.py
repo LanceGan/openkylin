@@ -569,13 +569,25 @@ def _load_known_plans() -> dict[str, Callable[[], OptimizationPlan]]:
         build_mask_strongswan,
         build_parallelize_kylin,
         build_socket_nm_wait,
+        phase6_initramfs_trim,
+        phase6_kaiming_stagger,
+        phase6_mask_strongswan,
+        phase6_mitigations_off,
+        phase6_parallel_kysdk,
     )
     return {
+        # Phase 5 candidates
         "mask-biometric": build_mask_biometric,
         "mask-strongswan": build_mask_strongswan,
         "socket-nm-wait": build_socket_nm_wait,
         "parallelize-kylin": build_parallelize_kylin,
         "exec-delay-lightdm": build_exec_delay_lightdm,
+        # Phase 6 candidates
+        "phase6-mask-strongswan": phase6_mask_strongswan,
+        "phase6-kaiming-stagger": phase6_kaiming_stagger,
+        "phase6-parallel-kysdk": phase6_parallel_kysdk,
+        "phase6-mitigations-off": phase6_mitigations_off,
+        "phase6-initramfs-trim": phase6_initramfs_trim,
     }
 
 
@@ -623,30 +635,32 @@ def analyze(
 
 @agent_app.command()
 def benchmark(
-    data_root: DataRoot = Path("var/runs"),  # noqa: B008
+    data_root: DataRoot = Path("var/runs"),
     case_file: Annotated[Path, typer.Option(help="Benchmark cases JSON")]
-    = Path("agent/benchmark/cases.json"),  # noqa: B008
+    = Path("agent/benchmark/cases.json"),
 ) -> None:
-    """Score the agent against the fault benchmark (requires Ollama)."""
-    from kylinbootlab.agent.backend import OllamaBackend
-    from kylinbootlab.agent.benchmark import load_benchmark
-    from kylinbootlab.agent.controller import BootAgent
+    """Describe the BootAgent benchmark (manual evaluation protocol).
 
-    store = RunStore(data_root)
+    The BootAgent benchmark is a human-graded evaluation, not an automated
+    pass/fail.  Each of the 5 cases requires manual review of agent output
+    against ground-truth expectations documented in each case.
+
+    To run the agent on a specific stored run, use: kbl agent analyze <RUN_ID>
+    """
+    from kylinbootlab.agent.benchmark import load_benchmark
+
     cases = load_benchmark(case_file)
-    backend = OllamaBackend()
-    agent = BootAgent(backend, store)
-    total = 0.0
+    typer.echo(f"BootAgent Benchmark — {len(cases)} cases ({case_file})\n")
     for case in cases:
-        typer.echo(f"\n--- {case.name} ---")
-        report = agent.analyze(None)  # simplified for MVP
-        score = case.score(report)
-        total += score
-        typer.echo(f"  Score: {score:.1f}")
-    accuracy = total / len(cases)
-    typer.echo(f"\nBenchmark accuracy: {accuracy:.1%}")
-    if accuracy < 0.6:
-        raise typer.Exit(code=1)
+        typer.echo(f"  {case.id}: {case.name}")
+        typer.echo(f"    Ground truth: {case.ground_truth}")
+        typer.echo()
+    typer.echo(
+        "Evaluation is manual: for each case, run 'kbl agent analyze <RUN_ID>',\n"
+        "then compare the agent output to the ground truth above.\n"
+        "See docs/superpowers/specs/2026-07-20-kylinbootlab-bootagent.md §6 for\n"
+        "the scoring rubric (0-1 per case, pass ≥ 3.0/5.0)."
+    )
 
 
 # -- Phase 9 evidence dashboard -----------------------------------------
