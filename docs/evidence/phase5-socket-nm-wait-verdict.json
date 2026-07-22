@@ -32,5 +32,5 @@
   "failed_gates": [
     "functional regression test failed \u2014 VM SSH became unreachable at boot 7/18"
   ],
-  "recommendation": "PROMISING \u2014 median improvement 9.6% with CI [0.42s, 1.48s], functional tests pass. Consider Phase 10 canary deployment."
+  "recommendation": "REJECTED \u2014 VM SSH became unreachable at boot 7/18. Early boots (1-6) showed PROMISING signal (+9.6%) but ExecStart= override caused functional regression: NetworkManager failed to bring up network on a cold boot. Safety gate correctly rejected the candidate."
 }

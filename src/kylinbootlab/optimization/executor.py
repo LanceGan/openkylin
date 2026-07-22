@@ -18,6 +18,10 @@ from kylinbootlab.optimization.plan import OptimizationPlan
 from kylinbootlab.remote import _SSH_OPTIONS
 
 
+class ProfileApplyError(RuntimeError):
+    """Raised when a profile change fails on the target — the change was not applied."""
+
+
 class ProfileExecutor:
     """Apply and rollback systemd configuration changes on a target via SSH."""
 
@@ -27,14 +31,14 @@ class ProfileExecutor:
 
     # -- SSH helpers ----------------------------------------------------------
 
-    def _ssh(self, command: str) -> subprocess.CompletedProcess[str]:
+    def _ssh(self, command: str, *, raise_on_error: bool = True) -> subprocess.CompletedProcess[str]:
         """Execute a single shell command on the target via SSH."""
         if self.password is not None:
             command = command.replace(
                 "sudo ",
                 f"echo '{self.password}' | sudo -S ",
             )
-        return subprocess.run(
+        result = subprocess.run(
             ["ssh", *_SSH_OPTIONS, self.target, command],
             capture_output=True,
             text=True,
@@ -43,6 +47,12 @@ class ProfileExecutor:
             timeout=30,
             check=False,
         )
+        if raise_on_error and result.returncode != 0:
+            raise ProfileApplyError(
+                f"SSH command failed (rc={result.returncode}): {command[:100]}\n"
+                f"stderr: {result.stderr.strip()[:200]}"
+            )
+        return result
 
     def _ssh_slow(self, command: str) -> subprocess.CompletedProcess[str]:
         """Same as _ssh but with 120s timeout for slow operations."""
@@ -51,7 +61,7 @@ class ProfileExecutor:
                 "sudo ",
                 f"echo '{self.password}' | sudo -S ",
             )
-        return subprocess.run(
+        result = subprocess.run(
             ["ssh", *_SSH_OPTIONS, self.target, command],
             capture_output=True,
             text=True,
@@ -60,6 +70,12 @@ class ProfileExecutor:
             timeout=120,
             check=False,
         )
+        if result.returncode != 0:
+            raise ProfileApplyError(
+                f"SSH command failed (rc={result.returncode}): {command[:100]}\n"
+                f"stderr: {result.stderr.strip()[:200]}"
+            )
+        return result
 
     # -- apply ----------------------------------------------------------------
 
@@ -127,10 +143,11 @@ class ProfileExecutor:
     def verify_applied(self, plan: OptimizationPlan) -> bool:
         """Check whether the optimization is currently applied on the target."""
         if plan.mask_unit is not None:
-            r = self._ssh(f"systemctl is-enabled {plan.mask_unit} 2>&1")
+            r = self._ssh(f"systemctl is-enabled {plan.mask_unit} 2>&1",
+                          raise_on_error=False)
             return "masked" in (r.stdout or "")
         if plan.drop_in_path is not None:
-            r = self._ssh(f"test -f {plan.drop_in_path}")
+            r = self._ssh(f"test -f {plan.drop_in_path}", raise_on_error=False)
             return r.returncode == 0
         return False
 
