@@ -110,11 +110,11 @@ def build_mask_strongswan() -> OptimizationPlan:
         title="Mask strongswan.service",
         category="service_mask",
         description=(
-            "Disable strongswan.service (IPsec VPN daemon). "
+            "Disable strongswan-starter.service (IPsec VPN daemon). "
             "Typically unused on single-NIC desktop VMs -- safe to mask."
         ),
         evidence=BottleneckEvidence(
-            node="strongswan.service",
+            node="strongswan-starter.service",
             blame_ns=450_000_000,
             slack_ns=0,
             on_critical_path=True,
@@ -125,14 +125,14 @@ def build_mask_strongswan() -> OptimizationPlan:
             upper_bound_ns=450_000_000,
             confidence=0.9,
         ),
-        mask_unit="strongswan.service",
-        rollback=["sudo systemctl unmask strongswan.service"],
+        mask_unit="strongswan-starter.service",
+        rollback=["sudo systemctl unmask strongswan-starter.service"],
         functional_regression=[],
         portability=0.8,
         stability_risk=0.1,
         verification_cost=18,
         falsification=(
-            "If strongswan.service is not present on the target, the plan is wrong."
+            "If strongswan-starter.service is not present on the target, the plan is wrong."
         ),
     )
 

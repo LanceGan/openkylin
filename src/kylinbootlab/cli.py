@@ -530,12 +530,13 @@ def cmd_optimize_run_all(
     mac: Annotated[str | None, typer.Option(help="MAC address for the wol backend")]
     = None,
 ) -> None:
-    """Run all ranked optimization candidates sequentially on one target.
-
-    Placeholder stub -- will iterate ranked candidates and call the ABBA runner
-    for each. Currently raises ``NotImplementedError``.
-    """
-    raise NotImplementedError("run-all not yet implemented")
+    """Run all ranked optimization candidates sequentially on one target."""
+    typer.echo(
+        "kbl optimize run-all: not yet implemented.\n\n"
+        "Currently each candidate must be run individually via:\n"
+        "  kbl optimize run <plan_id> [OPTIONS]\n\n"
+        "Batch scheduling is planned for Phase 10 (final validation)."
+    )
 
 
 @optimize_app.command("status")

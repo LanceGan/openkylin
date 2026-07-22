@@ -146,10 +146,10 @@ Agent **不执行** shell 命令——所有输出为 JSON Schema 验证的结�
 | 指标 | 值 |
 |------|-----|
 | 提交数 | 84（7 月 15-21 日） |
-| Python 测试 | ~330 个，全部通过 |
-| Rust 测试 | 54 个，全部通过 |
+| Python 测试 | 176 个，全部通过 |
+| Rust 测试 | 54 个，全部通过（在 openKylin 目标机上编译并执行） |
 | 静态检查 | ruff ✅ / mypy strict ✅ / cargo clippy -D warnings ✅ |
-| 代码覆盖率 | 91%（Python） |
+| 代码覆盖率 | 91%（Python，Phase 1 基线） |
 
 ### 5.2 可复现性
 
@@ -187,3 +187,56 @@ KylinBootLab 证明了一套系统化的启动性能分析方法可以在 openKy
 2. **裸机实验**：将 P/E 核调度（Phase 7）和 `MODULES=dep` initramfs 放在 14700K 硬件的物理启动上测试
 3. **UKUI 源码补丁**：在 openKylin 构建环境中将 `ukui-panel` 和 `ukui-settings-daemon` 的串行 D-Bus 调用并行化
 4. **Ubuntu/Fedora 验证**：将适配器文档中的 5 步核查清单应用到这些发行版上
+
+
+## 附录 A：赛题要求可追溯性矩阵
+
+| 赛题要求 | 实现状态 | 证据 |
+|---------|---------|------|
+| 基于 openKylin 客户端系统优化 | ✅ 已实现 | VMware 中 openKylin 2.0 SP2，ostree 部署 |
+| 环境可为 x86 VM，不依赖专有硬件 | ✅ 已实现 | 全部实验在 VMware Workstation 上完成 |
+| 阶段拆解：内核→登录界面 | ✅ 已实现 | Phase 4 因果图（333 节点/1651 边），§3.2-3.3 |
+| 阶段拆解：登录→可用桌面 | ✅ 已实现 | Phase 3 就绪探测（uinput 登录 + AT-SPI），§3.5 |
+| 排除 BIOS/UEFI/GRUB，明确计时起点 | ✅ 已实现 | CLOCK_BOOTTIME，HTML 报告 methodology，§3.1 |
+| 登录界面四项条件 | ✅ 已实现 | Phase 3：greeter + 键盘输入(uinput) + dbus/NM/lightdm active，§3.5 |
+| 可用桌面四项条件 | ✅ 已实验验证 | Phase 3：UKUI 组件 + AT-SPI + 哨兵终端，§3.5 |
+| 不关闭图形登录、不牺牲桌面功能 | ✅ 已实现 | uinput PAM 真实登录，非 autologin，§3.5 |
+| 量化对比（启动总时长、关键服务、登录/桌面时间） | ✅ 已实现 | Phase 5-6 ABBA 实验，7 候选，§4.3 |
+| 提交代码、脚本、报告、复现说明 | ✅ 已实现 | 86 提交，runbook，README，技术报告 |
+| 跨发行版迁移验证（鼓励） | ⚠️ 已文档化 | `adapters/README.md`，5 步核查清单 |
+| AI/Agent 辅助分析（鼓励） | ✅ 已实现 | Phase 8 BootAgent，Qwen2.5 7B CPU，§3.6 |
+| 依赖图建模（鼓励） | ✅ 已实现 | Phase 4 DOT 图 + DP 关键路径，§3.3 |
+
+
+## 附录 B：功能回归证据矩阵
+
+| 功能 | 验证方法 | 状态 | 最近验证的 Run ID |
+|------|---------|------|------------------|
+| 登录能力 | PAM `session opened for user kbl`（journald） | ✅ | Phase 3 每次冷启动 |
+| NetworkManager | `systemctl is-active NetworkManager` | ✅ | 全部 ABBA 实验 |
+| dbus | `systemctl is-active dbus` | ✅ | 全部 ABBA 实验 |
+| 显示管理器 (lightdm) | `systemctl is-active lightdm` | ✅ | 全部 ABBA 实验 |
+| 桌面面板/启动器/托盘 | ukui-panel 进程存在 + AT-SPI 枚举 | ✅ | Phase 3 就绪探测 |
+| 文件管理器 (peony) | `dpkg -l peony` — 已安装 | ⚠️ 未在每次启动中验证 |
+| 终端 (mate-terminal) | Phase 3 哨兵首窗计时 | ✅ | Phase 3 就绪探测 |
+| 设置中心 | `dpkg -l ukui-settings-daemon` — 已安装 | ⚠️ 未在每次启动中验证 |
+| 音频 | `dpkg -l pulseaudio` — 已安装 | ⚠️ 未在每次启动中验证 |
+| 输入法 | `dpkg -l fcitx5` — 已安装 | ⚠️ 未在每次启动中验证 |
+| 首用行为 | ABBA P95 回退 ≤ 1% 门控 | ✅ | Phase 5-6 判决阈值 |
+
+⚠️ = 软件包已安装但未在每次 ABBA 实验中做自动化功能检测。标记为已知限制。
+
+
+## 附录 C：Phase 7 / Phase 10 边界
+
+Phase 7（P/E 核调度、cgroup QoS、io_uring 预取）和 Phase 10 中以下子项在当前仓库中**未完全实现**：
+
+| 项目 | 状态 | 说明 |
+|------|------|------|
+| P/E 核拓扑感知 | 延后 | VMware 不向客户机暴露 P/E 核拓扑——需要裸机 |
+| cgroup v2 启动 QoS | 延后 | 需要裸机 P/E 核来有意义 |
+| io_uring 预取 | 延后 | 需要裸机进行有意义的 I/O 基准测试 |
+| 100 次连续冷启动 | 延后 | 需要修复代理 + 裸机环境 |
+| Ubuntu 裸机执行 | 已文档化 | `adapters/README.md` — 5 步核查清单 |
+| Fedora VM 执行 | 已文档化 | `adapters/README.md` — dracut 适配器文档 |
+| 完整 ABBA 30×30 正式基准 | 延后 | 当前 18 次启动/候选——更大 N 值需要更多时间 |
