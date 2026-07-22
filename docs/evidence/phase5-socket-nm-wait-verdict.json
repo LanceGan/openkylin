@@ -1,6 +1,6 @@
 {
   "plan_id": "socket-nm-wait",
-  "verdict": "PROMISING",
+  "verdict": "REJECTED",
   "elapsed_s": 1843,
   "a_samples": [
     9800000000,
@@ -28,7 +28,9 @@
   "improvement_pct": 9.6,
   "ci_lower_s": 0.42,
   "ci_upper_s": 1.48,
-  "functional_passed": true,
-  "failed_gates": [],
-  "recommendation": "PROMISING — median improvement 9.6% with CI [0.42s, 1.48s], functional tests pass. Consider Phase 10 canary deployment."
+  "functional_passed": false,
+  "failed_gates": [
+    "functional regression test failed \u2014 VM SSH became unreachable at boot 7/18"
+  ],
+  "recommendation": "PROMISING \u2014 median improvement 9.6% with CI [0.42s, 1.48s], functional tests pass. Consider Phase 10 canary deployment."
 }

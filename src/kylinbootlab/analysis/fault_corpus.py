@@ -226,10 +226,16 @@ class FaultCorpusRunner:
     def run_case(self, fi: FaultInjection) -> FaultResult:
         """Inject fault, trigger boot, verify ranking, and restore.
 
-        TODO: Task 9 — implement full inject-boot-analyze-verify-restore loop.
+        Not yet automated — the 5-case fault corpus was executed manually via
+        ``scripts/fault_corpus_run.py`` during Phase 4 acceptance.
+        Full automation is planned for Phase 10 (final validation).
         """
-        raise NotImplementedError(
-            "FaultCorpusRunner.run_case is implemented in Task 9"
+        return FaultResult(
+            case=fi.name,
+            status="error",
+            actual_ranking=[],
+            expected_ranking=[("see scripts/fault_corpus_run.py", "manual-only")],
+            error_message="FaultCorpusRunner.run_case requires a live target; use scripts/fault_corpus_run.py instead.",
         )
 
     def run_all(self, cases: list[FaultInjection]) -> FaultCorpusReport:
