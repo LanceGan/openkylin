@@ -6,6 +6,9 @@ user-perceived readiness points.  Raw events are immutable; every
 metric here is recomputable from them.
 """
 
+from __future__ import annotations
+
+import re
 from pathlib import Path
 from typing import Literal
 
@@ -15,9 +18,27 @@ from kylinbootlab.capture import load_command_capture
 from kylinbootlab.contracts import ContractModel, ProbeManifest
 from kylinbootlab.store import BundleError
 
-_REQUIRED_UNITS = frozenset(
-    {"dbus.service", "NetworkManager.service", "lightdm.service"}
-)
+def _required_units(dm_service: str = "lightdm.service") -> frozenset[str]:
+    """Units that must be active before login injection.
+
+    ``dbus.service`` and ``NetworkManager.service`` are universal; the display
+    manager service is taken from the ``observer_started`` event detail (the
+    Rust observer driver writes ``dm=<value>`` there — default ``lightdm.service``,
+    set to ``gdm.service`` on Ubuntu/Fedora).
+    """
+    return frozenset({"dbus.service", "NetworkManager.service", dm_service})
+
+
+def _parse_dm_from_started(started_event: ReadinessEvent | None) -> str:
+    """Extract the display-manager service name from the observer_started event.
+
+    Returns ``"lightdm.service"`` when the event is absent or does not carry
+    the ``dm=`` key (pre-Phase-10 observers).
+    """
+    if started_event is None:
+        return "lightdm.service"
+    match = re.search(r"dm=(\S+)", started_event.detail)
+    return match.group(1) if match else "lightdm.service"
 
 EventKind = Literal[
     "observer_started", "unit_active", "greeter_started", "greeter_ready",
@@ -70,16 +91,21 @@ def derive_metrics(events: list[ReadinessEvent]) -> ReadinessMetrics:
 
     started = _first(events, "observer_started")
     mode = None
-    if started is not None and started.detail.startswith("mode="):
-        mode = started.detail.removeprefix("mode=")
+    if started is not None:
+        mode_match = re.search(r"mode=(\S+)", started.detail)
+        if mode_match is not None:
+            mode = mode_match.group(1)
+
+    dm_service = _parse_dm_from_started(started)
+    required = _required_units(dm_service)
 
     greeter_ready = _first(events, "greeter_ready")
     active_units = {e.detail: e.monotonic_ns for e in events if e.kind == "unit_active"}
     login_ready_ns: int | None = None
-    if greeter_ready is not None and set(active_units) >= _REQUIRED_UNITS:
+    if greeter_ready is not None and set(active_units) >= required:
         login_ready_ns = max(
             greeter_ready.monotonic_ns,
-            *(active_units[u] for u in _REQUIRED_UNITS),
+            *(active_units[u] for u in required),
         )
 
     session = _first(events, "session_opened")

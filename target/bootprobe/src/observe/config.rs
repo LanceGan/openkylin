@@ -53,6 +53,8 @@ pub struct ObserveConfig {
     pub sentinel_command: Vec<String>,
     #[serde(default)]
     pub desktop_processes: Vec<String>,
+    #[serde(default = "default_display_manager_service")]
+    pub display_manager_service: String,
     #[serde(default = "default_greeter_ready_pattern")]
     pub greeter_ready_pattern: String,
     #[serde(default = "default_session_opened_pattern")]
@@ -73,6 +75,10 @@ fn default_greeter_ready_pattern() -> String {
 
 fn default_session_opened_pattern() -> String {
     "session opened for user".to_owned()
+}
+
+fn default_display_manager_service() -> String {
+    "lightdm.service".to_owned()
 }
 
 impl ObserveConfig {
@@ -107,6 +113,7 @@ impl ObserveConfig {
             target_user: default_target_user(),
             sentinel_command: default_sentinel_command(),
             desktop_processes: Vec::new(),
+            display_manager_service: default_display_manager_service(),
             greeter_ready_pattern: default_greeter_ready_pattern(),
             session_opened_pattern: default_session_opened_pattern(),
         }
@@ -123,6 +130,7 @@ impl std::fmt::Debug for ObserveConfig {
             .field("target_user", &self.target_user)
             .field("sentinel_command", &self.sentinel_command)
             .field("desktop_processes", &self.desktop_processes)
+            .field("display_manager_service", &self.display_manager_service)
             .field("greeter_ready_pattern", &self.greeter_ready_pattern)
             .field("session_opened_pattern", &self.session_opened_pattern)
             .finish()
@@ -139,6 +147,7 @@ mode = "diagnostic"
 target_user = "kbl"
 sentinel_command = ["mate-terminal", "--disable-factory"]
 desktop_processes = ["ukui-panel", "ukui-settings-daemon"]
+display_manager_service = "gdm.service"
 greeter_ready_pattern = "ukui-greeter"
 session_opened_pattern = "session opened for user"
 "#;
@@ -150,6 +159,7 @@ session_opened_pattern = "session opened for user"
         assert_eq!(config.password, "kbl123");
         assert_eq!(config.sentinel_command[0], "mate-terminal");
         assert_eq!(config.desktop_processes.len(), 2);
+        assert_eq!(config.display_manager_service, "gdm.service");
     }
 
     #[test]
@@ -159,6 +169,7 @@ session_opened_pattern = "session opened for user"
         assert_eq!(config.target_user, "kbl");
         assert_eq!(config.sentinel_command, vec!["mate-terminal".to_owned()]);
         assert!(config.desktop_processes.is_empty());
+        assert_eq!(config.display_manager_service, "lightdm.service");
         assert_eq!(config.greeter_ready_pattern, "ukui-greeter");
         assert_eq!(config.session_opened_pattern, "session opened for user");
     }
@@ -190,8 +201,7 @@ session_opened_pattern = "session opened for user"
 
     #[test]
     fn unknown_keys_are_rejected() {
-        let error =
-            ObserveConfig::from_toml_str("password = \"abc123\"\nbogus = 1\n").unwrap_err();
+        let error = ObserveConfig::from_toml_str("password = \"abc123\"\nbogus = 1\n").unwrap_err();
         assert!(error.to_string().contains("invalid observe.toml"));
     }
 

@@ -13,9 +13,12 @@ pub const SESSION_TIMEOUT_NS: u64 = 30_000_000_000;
 pub const USABLE_TIMEOUT_NS: u64 = 300_000_000_000;
 
 /// Units that must be active before login injection (spec §4.2).
-/// MUST stay aligned with `_REQUIRED_UNITS` in `src/kylinbootlab/readiness.py`.
-pub const REQUIRED_UNITS: [&str; 3] =
-    ["dbus.service", "NetworkManager.service", "lightdm.service"];
+/// ``dbus.service`` and ``NetworkManager.service`` are universal; the display
+/// manager service is taken from ``ObserveConfig.display_manager_service``
+/// (default ``lightdm.service``; set to ``gdm.service`` on Ubuntu/Fedora).
+/// MUST stay aligned with ``_derive_required_units`` in
+/// ``src/kylinbootlab/readiness.py`` — the Python side parses the DM service
+/// name from the ``observer_started`` event detail emitted by the driver.
 
 /// Degradation marker the usable-probe embeds in event details when AT-SPI
 /// is unreachable (spec §8); the usable decision below recognises it.
@@ -24,15 +27,29 @@ pub const ATSPI_UNAVAILABLE: &str = "atspi_unavailable";
 #[derive(Debug, Clone)]
 pub enum Signal {
     Journal(JournalLine),
-    UnitActive { unit: String, monotonic_ns: u64 },
-    UinputReady { monotonic_ns: u64 },
-    LoginInjected { monotonic_ns: u64 },
-    UsableResult { events: Vec<ReadinessEvent>, monotonic_ns: u64 },
-    Tick { monotonic_ns: u64 },
+    UnitActive {
+        unit: String,
+        monotonic_ns: u64,
+    },
+    UinputReady {
+        monotonic_ns: u64,
+    },
+    LoginInjected {
+        monotonic_ns: u64,
+    },
+    UsableResult {
+        events: Vec<ReadinessEvent>,
+        monotonic_ns: u64,
+    },
+    Tick {
+        monotonic_ns: u64,
+    },
 }
 
 pub struct ReadinessState {
     started_ns: u64,
+    dm_service: String,
+    required_units: BTreeSet<String>,
     greeter_ready_pattern: String,
     session_needle: String,
     greeter_started: bool,
@@ -47,13 +64,20 @@ pub struct ReadinessState {
 
 impl ReadinessState {
     pub fn new(started_ns: u64, config: &ObserveConfig) -> Self {
+        let dm = config.display_manager_service.clone();
+        let required_units: BTreeSet<String> = [
+            "dbus.service".to_owned(),
+            "NetworkManager.service".to_owned(),
+            dm.clone(),
+        ]
+        .into_iter()
+        .collect();
         Self {
             started_ns,
+            dm_service: dm,
+            required_units,
             greeter_ready_pattern: config.greeter_ready_pattern.clone(),
-            session_needle: format!(
-                "{} {}",
-                config.session_opened_pattern, config.target_user
-            ),
+            session_needle: format!("{} {}", config.session_opened_pattern, config.target_user),
             greeter_started: false,
             greeter_ready: false,
             units_active: BTreeSet::new(),
@@ -77,7 +101,7 @@ impl ReadinessState {
             && !self.injection_requested
             && self.greeter_ready
             && self.uinput_ready
-            && self.units_active.len() == REQUIRED_UNITS.len();
+            && self.units_active.len() == self.required_units.len();
         if due {
             self.injection_requested = true;
         }
@@ -90,9 +114,7 @@ impl ReadinessState {
         }
         match signal {
             Signal::Journal(line) => self.on_journal(&line),
-            Signal::UnitActive { unit, monotonic_ns } => {
-                self.on_unit_active(&unit, monotonic_ns)
-            }
+            Signal::UnitActive { unit, monotonic_ns } => self.on_unit_active(&unit, monotonic_ns),
             Signal::UinputReady { .. } => {
                 self.uinput_ready = true;
                 Vec::new()
@@ -106,18 +128,19 @@ impl ReadinessState {
                     "password+enter via uinput",
                 )]
             }
-            Signal::UsableResult { events, monotonic_ns } => {
-                self.on_usable(events, monotonic_ns)
-            }
+            Signal::UsableResult {
+                events,
+                monotonic_ns,
+            } => self.on_usable(events, monotonic_ns),
             Signal::Tick { monotonic_ns } => self.on_tick(monotonic_ns),
         }
     }
 
     fn on_journal(&mut self, line: &JournalLine) -> Vec<ReadinessEvent> {
         let mut emitted = Vec::new();
-        let from_lightdm = line.unit.as_deref() == Some("lightdm.service");
+        let from_dm = line.unit.as_deref() == Some(&self.dm_service);
 
-        if !self.greeter_started && from_lightdm && line.message.contains("start begin") {
+        if !self.greeter_started && from_dm && line.message.contains("start begin") {
             self.greeter_started = true;
             emitted.push(ReadinessEvent::new(
                 EventKind::GreeterStarted,
@@ -143,9 +166,7 @@ impl ReadinessState {
         // Only lightdm's PAM stack counts: the controller polls over SSH
         // during boot and sshd logs the same "session opened for user kbl"
         // phrase — matching it would fake an early Tsession.
-        if self.session_ns.is_none()
-            && from_lightdm
-            && line.message.contains(&self.session_needle)
+        if self.session_ns.is_none() && from_dm && line.message.contains(&self.session_needle)
         {
             self.session_ns = Some(line.monotonic_ns);
             emitted.push(ReadinessEvent::new(
@@ -159,7 +180,7 @@ impl ReadinessState {
     }
 
     fn on_unit_active(&mut self, unit: &str, monotonic_ns: u64) -> Vec<ReadinessEvent> {
-        if !REQUIRED_UNITS.contains(&unit) || !self.units_active.insert(unit.to_owned()) {
+        if !self.required_units.contains(unit) || !self.units_active.insert(unit.to_owned()) {
             return Vec::new();
         }
         vec![ReadinessEvent::new(
@@ -170,11 +191,7 @@ impl ReadinessState {
         )]
     }
 
-    fn on_usable(
-        &mut self,
-        events: Vec<ReadinessEvent>,
-        monotonic_ns: u64,
-    ) -> Vec<ReadinessEvent> {
+    fn on_usable(&mut self, events: Vec<ReadinessEvent>, monotonic_ns: u64) -> Vec<ReadinessEvent> {
         self.finished = true;
         let failed = events.iter().any(|event| event.kind == EventKind::Error);
         let degraded = events
@@ -209,8 +226,7 @@ impl ReadinessState {
     }
 
     fn on_tick(&mut self, now_ns: u64) -> Vec<ReadinessEvent> {
-        if !self.injection_requested
-            && now_ns.saturating_sub(self.started_ns) >= GREETER_TIMEOUT_NS
+        if !self.injection_requested && now_ns.saturating_sub(self.started_ns) >= GREETER_TIMEOUT_NS
         {
             self.finished = true;
             return vec![ReadinessEvent::new(

@@ -1,4 +1,4 @@
-{"schema_version":1,"monotonic_ns":3000000000,"kind":"observer_started","detail":"mode=benchmark","source":"probe"}
+{"schema_version":1,"monotonic_ns":3000000000,"kind":"observer_started","detail":"mode=benchmark dm=lightdm.service","source":"probe"}
 {"schema_version":1,"monotonic_ns":6613388000,"kind":"greeter_started","detail":"lightdm start begin","source":"journald"}
 {"schema_version":1,"monotonic_ns":7000000000,"kind":"unit_active","detail":"dbus.service","source":"systemd"}
 {"schema_version":1,"monotonic_ns":7100000000,"kind":"unit_active","detail":"NetworkManager.service","source":"systemd"}

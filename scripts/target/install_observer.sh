@@ -48,6 +48,8 @@ cat >"$config_temp" <<EOF
 mode = "benchmark"
 target_user = "${target_user}"
 password = "${password}"
+display_manager_service = "lightdm.service"
+# ↑ Set to "gdm.service" on Ubuntu / Fedora (they use GDM instead of LightDM).
 # Refine after the first real login (see runbook section 4):
 # desktop_processes = ["ukui-panel", "ukui-settings-daemon"]
 # sentinel_command = ["mate-terminal"]

@@ -37,6 +37,11 @@ pub fn default_capture_specs() -> Vec<CaptureSpec> {
             required: true,
         },
         CaptureSpec {
+            name: "systemd-dot",
+            command: words(&["systemd-analyze", "--no-pager", "dot", "--order"]),
+            required: false,
+        },
+        CaptureSpec {
             name: "systemd-critical-chain",
             command: words(&["systemd-analyze", "--no-pager", "critical-chain"]),
             required: false,
