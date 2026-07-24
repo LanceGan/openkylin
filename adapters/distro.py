@@ -1,5 +1,6 @@
 """Distribution identity adapter — reads /etc/os-release and maps to DistroInfo."""
 from __future__ import annotations
+
 from typing import TypedDict
 
 
@@ -32,7 +33,7 @@ PROFILES: dict[str, DistroInfo] = {
     },
     "ubuntu": {
         "os_id": "ubuntu",
-        "os_version": "24.04",
+        "os_version": "22.04",
         "init_system": "systemd",
         "pkg_manager": "apt",
         "kernel_package": "linux-image-generic",

@@ -1,0 +1,127 @@
+{
+  "count": 4,
+  "avg_os_total_s": 9.654,
+  "avg_kernel_s": 1.206,
+  "runs": [
+    {
+      "run_id": "bf918f02-6e78-4167-918a-bf77c99f3eec",
+      "kernel_ns": 1206000000,
+      "initrd_ns": 1397000000,
+      "userspace_ns": 7051000000,
+      "os_total_ns": 9654000000,
+      "graphical_t0_ns": 9629000000,
+      "top5_blame": [
+        [
+          "systemd-update-utmp-runlevel.service",
+          17
+        ],
+        [
+          "plymouth-quit-wait.service",
+          3146
+        ],
+        [
+          "dev-sr0.device",
+          1687
+        ],
+        [
+          "dev-nvme0n1p3.device",
+          1525
+        ],
+        [
+          "dev-nvme0n1p2.device",
+          1517
+        ]
+      ]
+    },
+    {
+      "run_id": "d0b4ae10-51f9-4d79-8ace-f2dd4a9bfeeb",
+      "kernel_ns": 1206000000,
+      "initrd_ns": 1397000000,
+      "userspace_ns": 7051000000,
+      "os_total_ns": 9654000000,
+      "graphical_t0_ns": 9629000000,
+      "top5_blame": [
+        [
+          "systemd-update-utmp-runlevel.service",
+          17
+        ],
+        [
+          "plymouth-quit-wait.service",
+          3146
+        ],
+        [
+          "dev-sr0.device",
+          1687
+        ],
+        [
+          "dev-nvme0n1p3.device",
+          1525
+        ],
+        [
+          "dev-disk-by\\x2duuid-9316293b\\x2d229a\\x2d4a1f\\x2da85d\\x2d787297d7b7d2.device",
+          1517
+        ]
+      ]
+    },
+    {
+      "run_id": "8862ce83-a4cd-4739-acbf-7434fd7bcd75",
+      "kernel_ns": 1206000000,
+      "initrd_ns": 1397000000,
+      "userspace_ns": 7051000000,
+      "os_total_ns": 9654000000,
+      "graphical_t0_ns": 9629000000,
+      "top5_blame": [
+        [
+          "systemd-update-utmp-runlevel.service",
+          17
+        ],
+        [
+          "plymouth-quit-wait.service",
+          3146
+        ],
+        [
+          "dev-sr0.device",
+          1687
+        ],
+        [
+          "dev-nvme0n1p3.device",
+          1525
+        ],
+        [
+          "dev-disk-by\\x2duuid-9316293b\\x2d229a\\x2d4a1f\\x2da85d\\x2d787297d7b7d2.device",
+          1517
+        ]
+      ]
+    },
+    {
+      "run_id": "39e94715-f468-4742-86d0-3c0dd4afda86",
+      "kernel_ns": 1206000000,
+      "initrd_ns": 1397000000,
+      "userspace_ns": 7051000000,
+      "os_total_ns": 9654000000,
+      "graphical_t0_ns": 9629000000,
+      "top5_blame": [
+        [
+          "systemd-update-utmp-runlevel.service",
+          17
+        ],
+        [
+          "plymouth-quit-wait.service",
+          3146
+        ],
+        [
+          "dev-sr0.device",
+          1687
+        ],
+        [
+          "dev-nvme0n1p3.device",
+          1525
+        ],
+        [
+          "dev-nvme0n1p2.device",
+          1517
+        ]
+      ]
+    }
+  ]
+}

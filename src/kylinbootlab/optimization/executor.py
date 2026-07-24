@@ -31,7 +31,9 @@ class ProfileExecutor:
 
     # -- SSH helpers ----------------------------------------------------------
 
-    def _ssh(self, command: str, *, raise_on_error: bool = True) -> subprocess.CompletedProcess[str]:
+    def _ssh(
+        self, command: str, *, raise_on_error: bool = True
+    ) -> subprocess.CompletedProcess[str]:
         """Execute a single shell command on the target via SSH."""
         if self.password is not None:
             command = command.replace(
@@ -93,15 +95,23 @@ class ProfileExecutor:
                 )
                 self._ssh_slow("sudo update-grub")
             elif plan.category == "initramfs_trim":
-                # Write config + backup initrd (fast), then rebuild (slow)
                 escaped = plan.drop_in_content.replace("'", "'\\''")
-                kernel = "$(uname -r)"
-                self._ssh(
-                    f"sudo mkdir -p $(dirname {plan.drop_in_path}) && "
-                    f"echo '{escaped}' | sudo tee {plan.drop_in_path} > /dev/null && "
-                    f"sudo cp /boot/initrd.img-{kernel} /boot/initrd.img-{kernel}.kbl-backup"
-                )
-                self._ssh_slow("sudo update-initramfs -u -k all")
+                if "dracut" in (plan.drop_in_path or ""):
+                    # Fedora/dracut path — write config, then rebuild
+                    self._ssh(
+                        f"sudo mkdir -p $(dirname {plan.drop_in_path}) && "
+                        f"echo '{escaped}' | sudo tee {plan.drop_in_path} > /dev/null"
+                    )
+                    self._ssh_slow("sudo dracut --force --regenerate-all")
+                else:
+                    # Debian/initramfs-tools path — backup initrd, then rebuild
+                    kernel = "$(uname -r)"
+                    self._ssh(
+                        f"sudo mkdir -p $(dirname {plan.drop_in_path}) && "
+                        f"echo '{escaped}' | sudo tee {plan.drop_in_path} > /dev/null && "
+                        f"sudo cp /boot/initrd.img-{kernel} /boot/initrd.img-{kernel}.kbl-backup"
+                    )
+                    self._ssh_slow("sudo update-initramfs -u -k all")
             else:
                 # Standard drop-in (Phase 5 path)
                 drop_in_dir = plan.drop_in_path.rsplit("/", 1)[0]
@@ -131,9 +141,14 @@ class ProfileExecutor:
                     f"sudo rm -f {plan.drop_in_path} && sudo update-grub"
                 )
             elif plan.category == "initramfs_trim":
-                self._ssh_slow(
-                    f"sudo rm -f {plan.drop_in_path} && sudo update-initramfs -u -k all"
-                )
+                if "dracut" in (plan.drop_in_path or ""):
+                    self._ssh_slow(
+                        f"sudo rm -f {plan.drop_in_path} && sudo dracut --force --regenerate-all"
+                    )
+                else:
+                    self._ssh_slow(
+                        f"sudo rm -f {plan.drop_in_path} && sudo update-initramfs -u -k all"
+                    )
             else:
                 self._ssh(
                     f"sudo rm -f {plan.drop_in_path} && "

@@ -1,0 +1,13 @@
+{
+  "plan_id": "mask-strongswan",
+  "distribution": "ubuntu",
+  "version": "22.04 LTS",
+  "verdict": "REJECTED",
+  "median_improvement_ms": 33.0,
+  "median_improvement_pct": 0.65,
+  "ci_95_ms": [
+    -217.5,
+    65.5
+  ],
+  "note": "strongswan-starter.service has negligible impact (42.4s boot dominated by plymouth-quit-wait 19.8s)"
+}

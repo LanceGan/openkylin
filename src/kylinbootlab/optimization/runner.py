@@ -46,6 +46,37 @@ class ValidationResult(ContractModel):
     recommendation: str = ""
 
 
+class ABBAPower:
+    """TargetPower decorator that prevents ``snapshot_restore``.
+
+    The orchestrator calls ``snapshot_restore("baseline")`` before every
+    cold boot — which would silently revert the ABBA profile change.
+    Making ``snapshot_restore`` a no-op keeps the on-disk systemd
+    configuration intact across boots.  All other operations pass through.
+    """
+
+    def __init__(self, inner: TargetPower) -> None:
+        self._inner = inner
+
+    def power_on(self) -> None:
+        self._inner.power_on()
+
+    def power_off(self) -> None:
+        self._inner.power_off()
+
+    def reset(self) -> None:
+        self._inner.reset()
+
+    def snapshot_create(self, name: str) -> None:
+        self._inner.snapshot_create(name)
+
+    def snapshot_restore(self, name: str) -> None:
+        """Never revert the disk — the ABBA profile must survive."""
+
+    def guest_alive(self) -> bool:
+        return self._inner.guest_alive()
+
+
 class ABBARunner:
     """Run an ABBA experiment for one optimization candidate.
 
@@ -82,14 +113,19 @@ class ABBARunner:
         scheduler = ABBAScheduler(total_blocks=4, warmup_boots=2)
         state_machine = ProfileStateMachine(initial="A")
 
+        # Wrap power so snapshot_restore is a no-op — ABBA profiles must
+        # persist across boots (the orchestrator would otherwise revert them).
+        abba_power = ABBAPower(power)
+
         # Ensure the VM is running before applying any profiles.
-        # The orchestrator handles power cycling during the loop, but
-        # the profile executor needs an accessible target from the start.
         from kylinbootlab.experiments.aliveness import wait_for_ssh
 
-        if not power.guest_alive():
-            power.power_on()
-            wait_for_ssh(target, timeout=120)
+        def _ensure_vm_up() -> None:
+            if not abba_power.guest_alive():
+                abba_power.power_on()
+                wait_for_ssh(target, timeout=120)
+
+        _ensure_vm_up()
 
         sequence = scheduler.generate_sequence()  # 18 elements
         total_boots = len(sequence)
@@ -110,6 +146,16 @@ class ABBARunner:
         try:
             for boot_index in range(total_boots):
                 desired_profile = scheduler.current_profile(sequence, boot_index)
+
+                # The orchestrator powers off the VM after each experiment.
+                # Bring it back for SSH-based profile switching.
+                _ensure_vm_up()
+                if desired_profile != state_machine.current:
+                    if desired_profile == "A":
+                        executor.rollback(plan)
+                    else:
+                        executor.apply_with_retry(plan)
+                    state_machine.switch_to(desired_profile)
 
                 # Switch profile if needed (no-op if already correct)
                 if desired_profile != state_machine.current:
@@ -135,7 +181,7 @@ class ABBARunner:
                 orchestrator = ExperimentOrchestrator(
                     queue=eq,
                     store=store,
-                    power=power,
+                    power=abba_power,
                     target=target,
                     incoming_root=incoming_root,
                 )
@@ -166,7 +212,9 @@ class ABBARunner:
                 boot_times_a, boot_times_b, scheduler.total_blocks
             )
 
-            # Functional regression check
+            # Functional regression check — VM is off after the last
+            # boot (orchestrator powers off in finally), so bring it back.
+            _ensure_vm_up()
             functional_passed = self._check_functional(executor, plan)
 
             # Statistics
@@ -188,8 +236,9 @@ class ABBARunner:
             )
 
         finally:
-            # Always rollback the plan
+            # Always rollback the plan — VM may be off after last boot
             with contextlib.suppress(Exception):
+                _ensure_vm_up()
                 executor.rollback(plan)
             # Clean up temp queue file
             with contextlib.suppress(Exception):
@@ -206,8 +255,11 @@ class ABBARunner:
         """Extract the os_total boot time from the experiment's stored run.
 
         Looks up the experiment record to find run_id, then loads the
-        manifest and artifacts to get ``systemd-analyze time`` output.
+        ``systemd-analyze time`` capture artifact and parses stdout.
         """
+        import json
+        import re
+
         records = [r for r in queue.list() if r.exp_id == exp_id]
         if not records:
             return None
@@ -221,17 +273,15 @@ class ABBARunner:
         for artifact in manifest.artifacts:
             if artifact.name == "systemd-time":
                 apath = resolve_artifact(run_path / "raw", artifact.relative_path)
-                stdout = apath.read_text(encoding="utf-8")
+                # The capture file is a CommandCapture JSON with a "stdout" field
+                capture = json.loads(apath.read_text(encoding="utf-8"))
+                stdout = capture.get("stdout", "")
                 # Parse: "Startup finished in ... = X.XXXs"
-                for line in stdout.splitlines():
-                    if "Startup finished in" in line and "=" in line:
-                        parts = line.split("=")
-                        if len(parts) == 2:
-                            time_str = parts[1].strip().rstrip("s")
-                            try:
-                                return int(float(time_str) * 1_000_000_000)
-                            except ValueError:
-                                return None
+                match = re.search(
+                    r"Startup finished in .+ = (\d+\.?\d*)s", stdout
+                )
+                if match:
+                    return int(float(match.group(1)) * 1_000_000_000)
         return None
 
     @staticmethod

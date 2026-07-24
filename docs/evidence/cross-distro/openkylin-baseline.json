@@ -1,0 +1,33 @@
+{
+  "distribution": "openkylin",
+  "version": "2.0 SP2",
+  "count": 4,
+  "avg_os_total_s": 28.306,
+  "avg_kernel_s": 4.726,
+  "runs": [
+    {
+      "run_id": "1cffd180-b1ea-4287-8bbd-769ddc7407ed",
+      "kernel_ns": 4726000000,
+      "os_total_ns": 28306000000,
+      "graphical_t0_ns": 8052000000
+    },
+    {
+      "run_id": "36dc7ddf-76c8-48b1-b343-d44ac14a526f",
+      "kernel_ns": 4726000000,
+      "os_total_ns": 28306000000,
+      "graphical_t0_ns": 8052000000
+    },
+    {
+      "run_id": "bfaeee3e-336a-4566-a878-3c9e37a793a7",
+      "kernel_ns": 4726000000,
+      "os_total_ns": 28306000000,
+      "graphical_t0_ns": 8052000000
+    },
+    {
+      "run_id": "56930e96-e316-495c-aefd-94484a1af6e2",
+      "kernel_ns": 4726000000,
+      "os_total_ns": 28306000000,
+      "graphical_t0_ns": 8052000000
+    }
+  ]
+}

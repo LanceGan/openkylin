@@ -241,11 +241,15 @@ def reset(
 def _resolve_analysis_sink(graph: CausalGraph) -> str | None:
     """Determine the sink node for critical path / bottleneck analysis.
 
-    Prefers ``usable`` when the readiness layer is present, otherwise picks
+    Prefers ``usable`` when the readiness layer is present, then
+    ``graphical.target`` (the universal boot-complete milestone), then
     the first systemd-layer node with no outgoing edges.
     """
     if "usable" in graph.nodes:
         return "usable"
+    # On targets without the observer, graphical.target is the best sink
+    if "graphical.target" in graph.nodes:
+        return "graphical.target"
     sinks = [n for n in graph.nodes if not graph.successors(n)]
     if sinks:
         return sinks[0]
@@ -256,6 +260,7 @@ def _resolve_analysis_sink(graph: CausalGraph) -> str | None:
 def cmd_analyze(
     run_id: str = typer.Argument(..., help="Run UUID to analyze"),
     data_root: DataRoot = Path("var/runs"),  # noqa: B008
+    dot_target: Annotated[str | None, typer.Option(help="SSH target for on-demand DOT fetch")] = None,
 ) -> None:
     """Build causal graph and bottleneck report from a captured boot run."""
     import json
@@ -291,24 +296,35 @@ def cmd_analyze(
             continue
     if not dot_text or "digraph" not in dot_text:
         # Not captured at snapshot time — try SSH to fetch DOT from target
-        logger.info("No DOT artifact in store; fetching via SSH from target")
-        try:
-            import subprocess
-            manifest = store.load_manifest(rid)
-            target = manifest.host.hostname
-            result = subprocess.run(
-                ["ssh", "-o", "BatchMode=yes", f"kbl@{target}.local", "/usr/local/bin/kbl-dot-capture"],
-                capture_output=True, text=True, timeout=15, check=False,
-            )
-            if result.returncode == 0:
-                dot_text = result.stdout
-            else:
+        target = dot_target
+        if target is not None:
+            logger.info("No DOT artifact in store; fetching via SSH from %s", target)
+            try:
+                import subprocess
+                # Try the probe's own snapshot first (--snapshot-dot), then fall back to script
+                for dot_cmd in (
+                    "/usr/local/bin/kbl-dot-capture",
+                    "/home/kbl/bin/kbl-dot-capture",
+                ):
+                    result = subprocess.run(
+                        [
+                            "ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=15",
+                            target, dot_cmd,
+                        ],
+                        capture_output=True, text=True, timeout=30, check=False,
+                    )
+                    if result.returncode == 0 and "digraph" in (result.stdout or ""):
+                        dot_text = result.stdout
+                        break
+                else:
+                    dot_text = ""
+            except Exception:
                 dot_text = ""
-        except Exception:
-            dot_text = ""
 
     if not dot_text.strip():
-        raise typer.BadParameter("No DOT data available — systemd-dot capture absent and SSH fetch failed")
+        raise typer.BadParameter(
+            "No DOT data available — systemd-dot capture absent and SSH fetch failed"
+        )
 
     # Load blame
     blame_capture = load_command_capture(
@@ -569,6 +585,8 @@ def _load_known_plans() -> dict[str, Callable[[], OptimizationPlan]]:
         build_mask_strongswan,
         build_parallelize_kylin,
         build_socket_nm_wait,
+        fedora_initramfs_trim,
+        fedora_mask_strongswan,
         phase6_initramfs_trim,
         phase6_kaiming_stagger,
         phase6_mask_strongswan,
@@ -588,6 +606,9 @@ def _load_known_plans() -> dict[str, Callable[[], OptimizationPlan]]:
         "phase6-parallel-kysdk": phase6_parallel_kysdk,
         "phase6-mitigations-off": phase6_mitigations_off,
         "phase6-initramfs-trim": phase6_initramfs_trim,
+        # Cross-distro candidates
+        "fedora-mask-strongswan": fedora_mask_strongswan,
+        "fedora-initramfs-trim": fedora_initramfs_trim,
     }
 
 
@@ -644,9 +665,18 @@ def benchmark() -> None:
     cases = [
         ("B1", "dbus-exclusive-delay", "dbus.service: high blame on critical path"),
         ("B2", "bluetooth-large-slack", "ukui-bluetooth.service: high blame but large slack"),
-        ("B3", "kaiming-stagger-positive", "org.kylin.kaiming.service: After=graphical.target causes delay"),
-        ("B4", "socket-nm-wait-regression", "NetworkManager-wait-online.service: functional regression from drop-in"),
-        ("B5", "dbus-lightdm-combined", "dbus.service and lightdm.service: two independent bottlenecks"),
+        (
+            "B3", "kaiming-stagger-positive",
+            "org.kylin.kaiming.service: After=graphical.target causes delay",
+        ),
+        (
+            "B4", "socket-nm-wait-regression",
+            "NetworkManager-wait-online.service: functional regression from drop-in",
+        ),
+        (
+            "B5", "dbus-lightdm-combined",
+            "dbus.service and lightdm.service: two independent bottlenecks",
+        ),
     ]
     typer.echo(f"BootAgent Benchmark — {len(cases)} cases\n")
     for cid, name, truth in cases:

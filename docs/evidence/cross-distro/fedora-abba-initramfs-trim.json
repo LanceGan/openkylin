@@ -1,0 +1,13 @@
+{
+  "plan_id": "fedora-initramfs-trim",
+  "distribution": "fedora",
+  "version": "41",
+  "verdict": "REJECTED",
+  "median_improvement_ms": 2093.5,
+  "median_improvement_pct": 18.99,
+  "ci_95_ms": [
+    -8179.5,
+    -37.5
+  ],
+  "note": "dracut hostonly+omit network modules shows ~2s improvement but CI crosses zero \u2014 insufficient statistical power with n=8 per group. Promising candidate for larger sample."
+}

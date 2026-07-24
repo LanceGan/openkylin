@@ -494,3 +494,89 @@ def phase6_initramfs_trim() -> OptimizationPlan:
         verification_cost=18,
         falsification="If failed to load modules appear in dmesg, plan failed.",
     )
+
+
+def fedora_mask_strongswan() -> OptimizationPlan:
+    """Mask strongswan.service (strongSwan IPsec) — Fedora edition.
+
+    Fedora's strongswan package installs ``strongswan.service`` (swanctl-based),
+    not the Debian-style ``strongswan-starter.service``.
+    """
+    return OptimizationPlan(
+        plan_id="fedora-mask-strongswan",
+        title="Mask strongswan.service (IPsec, unused on VM) — Fedora",
+        category="service_mask",
+        description="Disable strongSwan IPsec daemon — unused on single-NIC desktop VM.",
+        evidence=BottleneckEvidence(
+            node="strongswan.service",
+            blame_ns=0,
+            slack_ns=0,
+            on_critical_path=False,
+            action_kind="service_mask",
+        ),
+        expected_gain=GainEstimate(
+            predicted_ns=0,
+            upper_bound_ns=0,
+            confidence=0.5,
+        ),
+        mask_unit="strongswan.service",
+        rollback=["sudo systemctl unmask strongswan.service"],
+        functional_regression=[
+            "systemctl is-active NetworkManager dbus",
+        ],
+        portability=0.8,
+        stability_risk=0.1,
+        verification_cost=18,
+        falsification=(
+            "If strongswan.service still shows in systemd-analyze blame, plan failed."
+        ),
+    )
+
+
+def fedora_initramfs_trim() -> OptimizationPlan:
+    """Trim initramfs with dracut hostonly mode — Fedora edition.
+
+    Fedora uses dracut (not initramfs-tools).  The default dracut config
+    already enables hostonly mode; this plan further omits network and
+    other unnecessary dracut modules for a single-NIC desktop VM.
+    """
+    drop_in = (
+        'hostonly="yes"\n'
+        'omit_dracutmodules+=" network network-manager ifcfg "\n'
+    )
+    return OptimizationPlan(
+        plan_id="fedora-initramfs-trim",
+        title="Trim initramfs via dracut hostonly + omit modules — Fedora",
+        category="initramfs_trim",
+        description=(
+            "Reduce initramfs size and build time by enabling strict "
+            "hostonly mode and omitting network dracut modules. "
+            "Safe on single-NIC desktop VMs."
+        ),
+        evidence=BottleneckEvidence(
+            node="initramfs (dracut module loading)",
+            blame_ns=1_372_000_000,
+            slack_ns=0,
+            on_critical_path=True,
+            action_kind="initramfs_trim",
+        ),
+        expected_gain=GainEstimate(
+            predicted_ns=500_000_000,
+            upper_bound_ns=1_000_000_000,
+            confidence=0.5,
+        ),
+        drop_in_content=drop_in,
+        drop_in_path="/etc/dracut.conf.d/kbl-phase6.conf",
+        rollback=[
+            "sudo rm -f /etc/dracut.conf.d/kbl-phase6.conf",
+            "sudo dracut --force --regenerate-all",
+        ],
+        functional_regression=[
+            "dmesg | grep -q 'failed to load' && exit 1 || true",
+            "systemctl is-system-running | grep -qv 'stopped'",
+        ],
+        portability=0.8,
+        stability_risk=0.4,
+        verification_cost=18,
+        falsification="If initrd_ns does not decrease, plan failed.",
+    )

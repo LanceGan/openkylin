@@ -69,7 +69,10 @@ class VixPower:
 
     @staticmethod
     def _real_run(args: list[str]) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(args, check=False, capture_output=True, text=True)
+        return subprocess.run(
+            args, check=False, capture_output=True, text=True,
+            encoding="utf-8", errors="replace",
+        )
 
     def _vmrun(self, *args: str) -> subprocess.CompletedProcess[str]:
         """Invoke ``vmrun -T ws <verb> [args...]`` and return the raw result."""
@@ -133,6 +136,7 @@ class WolPower:
     def _real_run(args: list[str]) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
             args, check=False, capture_output=True, text=True, timeout=30,
+            encoding="utf-8", errors="replace",
         )
 
     # -- power control ---------------------------------------------------

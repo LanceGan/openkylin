@@ -1,0 +1,24 @@
+{
+  "distribution": "ubuntu",
+  "version": "22.04 LTS",
+  "count": 4,
+  "avg_os_total_s": 42.411,
+  "runs": [
+    {
+      "id": "129c0649-c89d-443f-96bd-8a65b4748215",
+      "os_total_s": 42.411
+    },
+    {
+      "id": "1b37e5fe-0af2-4d95-a6fb-bb1bdb6b90a9",
+      "os_total_s": 42.411
+    },
+    {
+      "id": "8cefae34-475f-46c4-b726-0b97107cfa0d",
+      "os_total_s": 42.411
+    },
+    {
+      "id": "eea08987-f644-45fc-99fe-5f90286587b0",
+      "os_total_s": 42.411
+    }
+  ]
+}

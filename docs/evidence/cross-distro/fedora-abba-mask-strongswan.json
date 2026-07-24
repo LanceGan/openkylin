@@ -1,0 +1,13 @@
+{
+  "plan_id": "fedora-mask-strongswan",
+  "distribution": "fedora",
+  "version": "41",
+  "verdict": "REJECTED",
+  "median_improvement_ms": 609.0,
+  "median_improvement_pct": 6.88,
+  "ci_95_ms": [
+    -8429.0,
+    2931.5
+  ],
+  "note": "strongswan.service is disabled by default on Fedora \u2014 masking had no effect as expected"
+}
