@@ -20,11 +20,9 @@ kbl-bootprobe-built
 kbl-bootprobe-v2
 dashboard/dist/
 
-# IDE / 编辑器和 AI 工具
+# IDE 和编辑工具
 .vscode/
 .idea/
-CLAUDE.md
-.superpowers/
 
 # 实验数据（本地保留，不提交）
 var/runs/
@@ -33,7 +31,14 @@ var/experiments.jsonl
 var/calibration.jsonl
 var/calibration-report.json
 
+# 项目说明书（本地保留，完稿后单独提交）
+操作系统开源创新大赛项目说明书.docx
+操作系统开源创新大赛项目说明书.docx.pre-rebuild.bak
+操作系统开源创新大赛项目说明书.md
+charts/
+
 # 临时文件
 *.tmp
 *.swp
 *~
+
