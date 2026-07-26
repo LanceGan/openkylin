@@ -21,8 +21,8 @@ KylinBootLab 是一套 **Linux 桌面启动性能全链路分析、优化与验�
 ### 主要发现
 
 - **kaiming D-Bus 竞态**：`org.kylin.kaiming.service`（blame 20.2s）的 `After=graphical.target` 约束是 openKylin 最大可移除瓶颈
-- **组合优化效果**：kaiming 重排 + strongswan/biometric 掩码将冷启动底限从 9.5s 降至 7.3s（**-23%**），三项服务 blame 合计消除约 2.6s
-- **跨发行版对比**：openKylin 28.3s、Ubuntu 42.4s、Fedora 9.7s，Fedora 得益于 dracut 精简 initramfs 和更新的 systemd（v256）
+- **组合优化效果**：kaiming 重排 + strongswan/biometric 掩码中位改善 **-23%**，Bootstrap CI 下界 > 0，判定 PROMISING
+- **跨发行版对比**：openKylin 28.3s、Ubuntu 42.4s、Fedora 9.7s，Fedora 得益于 dracut 精简 initramfs 和较新的 systemd v256
 - **120+ 次冷启动实验**：ABBA 框架正确区分有效信号与测量噪声，组合优化达到 PROMISING 级别
 - **Observation overhead < 1%**：通过自动化标定流程验证 observer 自身开销在竞赛允许范围内
 
@@ -41,11 +41,13 @@ KylinBootLab 是一套 **Linux 桌面启动性能全链路分析、优化与验�
 | mask strongswan | Ubuntu 22.04 | 33ms (0.65%) | [-218, +66]ms | REJECTED |
 | mask strongswan | Fedora 41 | 609ms (6.88%) | [-8429, +2932]ms | REJECTED |
 | dracut initramfs 裁剪 | Fedora 41 | 2093ms (18.99%) | [-8180, -38]ms | REJECTED* |
-| mask biometric | openKylin | — | — | REJECTED |
-| socket NM-wait-online | openKylin | PROMISING | — | — |
+| mask biometric | openKylin | 182ms (4.02%) | [-639, +191]ms | REJECTED |
+| socket NM-wait-online | openKylin | 930ms (9.6%) | — | REJECTED<sub>†</sub> |
 | kaiming 重排 + 掩码组合 | openKylin | PROMISING (-23%) | — | — |
 
 > \* Fedora dracut 裁剪在所有实验中改善幅度最大（2.1s / 19%），但受限于每组 8 次冷启动的小样本量，CI 跨零。增加样本量后有望达到 ACCEPTED。
+>
+> † socket NM-wait-online 因优化导致 NetworkManager 启动失败（功能回归）。
 
 ## 系统架构
 
@@ -139,7 +141,7 @@ kbl calibrate                    # 观测器开销自动化标定
 kbl optimize plan/run            # 优化候选方案排序 + ABBA 冷启动验证
 kbl analyze RUN_ID [--dot-target HOST]  # 因果图瓶颈分析
 kbl agent analyze/benchmark      # LLM 辅助诊断
-kbl dashboard                    # 打开证据仪表板
+kbl dashboard                    # 启动 HTTP 服务器并打开证据仪表板
 ```
 
 ### 复现关键实验
