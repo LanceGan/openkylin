@@ -1,7 +1,5 @@
 # KylinBootLab
 
-> 开放原子开源大赛 — openKylin 赛题第四题：操作系统启动性能分析与优化
-
 ## 作品简介
 
 KylinBootLab 是一套 **Linux 桌面启动性能全链路分析、优化与验证系统**。系统以 openKylin 2.0 SP2 为主要目标平台，同时验证了 Ubuntu 22.04 LTS 和 Fedora 41 的跨发行版泛化能力。采用 **Windows 控制机 + Linux 目标机** 的双机闭环架构，覆盖从内核启动到桌面可用的完整时间线。
