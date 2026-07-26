@@ -35,7 +35,9 @@ var/calibration-report.json
 操作系统开源创新大赛项目说明书.docx
 操作系统开源创新大赛项目说明书.docx.pre-rebuild.bak
 操作系统开源创新大赛项目说明书.md
-charts/
+演示视频脚本.md
+演示PPT内容.md
+# charts/  # 图表保留在仓库中
 
 # 临时文件
 *.tmp

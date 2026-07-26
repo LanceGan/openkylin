@@ -24,32 +24,32 @@ if TYPE_CHECKING:
     from kylinbootlab.experiments.power import TargetPower
     from kylinbootlab.optimization.plan import OptimizationPlan
 
-app = typer.Typer(no_args_is_help=True)
-DataRoot = Annotated[Path, typer.Option(help="Immutable KylinBootLab run root")]
-QueueFile = Annotated[Path, typer.Option(help="Experiment queue JSONL path")]
+app = typer.Typer(no_args_is_help=True, help="KylinBootLab — openKylin 启动性能全链路分析与优化系统")
+DataRoot = Annotated[Path, typer.Option(help="不可变运行数据根目录")]
+QueueFile = Annotated[Path, typer.Option(help="实验队列 JSONL 文件路径")]
 
 
-@app.command()
+@app.command(help="打印 KylinBootLab 包版本")
 def version() -> None:
-    """Print the KylinBootLab package version."""
+    """打印 KylinBootLab 包版本。"""
     typer.echo(__version__)
 
 
-@app.command()
+@app.command(help="验证并导入目标机探针数据包")
 def ingest(bundle: Path, data_root: DataRoot = Path("var/runs")) -> None:
-    """Validate and import a target probe bundle."""
+    """验证并导入一个探针数据包。"""
     run_path = RunStore(data_root).ingest(bundle)
     typer.echo(run_path.name)
 
 
-@app.command()
+@app.command(help="生成确定性基线指标和 HTML 报告")
 def report(run_id: UUID, data_root: DataRoot = Path("var/runs")) -> None:
-    """Generate deterministic baseline metrics and HTML."""
+    """生成确定性基线指标和 HTML 报告。"""
     paths = write_baseline_report(RunStore(data_root), run_id)
     typer.echo(paths.html)
 
 
-@app.command()
+@app.command(help="从目标机 SSH 采集一次启动快照并导入")
 def collect(
     target: Annotated[str, typer.Option(help="SSH destination")]
     = "kbl@kbl-target.local",
@@ -79,7 +79,7 @@ def collect(
     typer.echo(run_path.name)
 
 
-@app.command()
+@app.command(help="运行观测器开销自动化标定（bare vs benchmark 对比）")
 def calibrate(
     target: Annotated[str, typer.Option(help="SSH destination")]
     = "kbl@192.168.19.128",
@@ -145,11 +145,11 @@ def calibrate(
 
 # -- Phase 2 experiment commands ---------------------------------------------
 
-experiment_app = typer.Typer(no_args_is_help=True)
-app.add_typer(experiment_app, name="experiment", help="Experiment queue operations")
+experiment_app = typer.Typer(no_args_is_help=True, help="冷启动实验队列操作")
+app.add_typer(experiment_app, name="experiment", help="冷启动实验队列操作")
 
 
-@experiment_app.command()
+@experiment_app.command(help="批量排队 N 个冷启动实验")
 def queue(
     profile: Annotated[str, typer.Option(help="Profile name")] = "baseline",
     count: Annotated[int, typer.Option(help="Number of experiments")] = 10,
@@ -169,7 +169,7 @@ def queue(
     typer.echo(f"queued {count} experiments with profile '{profile}'")
 
 
-@experiment_app.command("run")
+@experiment_app.command("run", help="运行实验队列直到全部排空")
 def run_loop(
     target: Annotated[str, typer.Option(help="SSH destination")]
     = "kbl@192.168.19.128",
@@ -256,7 +256,7 @@ def _resolve_analysis_sink(graph: CausalGraph) -> str | None:
     return next(iter(graph.nodes), None)
 
 
-@app.command("analyze")
+@app.command("analyze", help="构建因果图并生成瓶颈分析报告")
 def cmd_analyze(
     run_id: str = typer.Argument(..., help="Run UUID to analyze"),
     data_root: DataRoot = Path("var/runs"),  # noqa: B008
@@ -407,11 +407,11 @@ def cmd_analyze(
 
 # -- Phase 5 optimize commands ------------------------------------------------
 
-optimize_app = typer.Typer(no_args_is_help=True)
-app.add_typer(optimize_app, name="optimize", help="Optimization planning and validation")
+optimize_app = typer.Typer(no_args_is_help=True, help="优化方案规划与 ABBA 统计验证")
+app.add_typer(optimize_app, name="optimize", help="优化方案规划与 ABBA 统计验证")
 
 
-@optimize_app.command("plan")
+@optimize_app.command("plan", help="基于瓶颈报告评分并排序优化候选方案")
 def cmd_optimize_plan(
     run_id: str = typer.Argument(..., help="Run UUID with bottleneck-report.json"),
     data_root: DataRoot = Path("var/runs"),  # noqa: B008
@@ -486,7 +486,7 @@ def cmd_optimize_plan(
         )
 
 
-@optimize_app.command("run")
+@optimize_app.command("run", help="运行单个候选方案的 ABBA 冷启动验证实验")
 def cmd_optimize_run(
     plan_id: str = typer.Argument(..., help="Candidate plan ID to validate"),
     target: Annotated[str, typer.Option(help="SSH destination")]
@@ -631,11 +631,11 @@ def _build_power(
 
 # -- Phase 8 BootAgent commands ------------------------------------------------
 
-agent_app = typer.Typer(no_args_is_help=True)
-app.add_typer(agent_app, name="agent", help="BootAgent diagnostic operations")
+agent_app = typer.Typer(no_args_is_help=True, help="BootAgent LLM 辅助诊断")
+app.add_typer(agent_app, name="agent", help="BootAgent LLM 辅助诊断")
 
 
-@agent_app.command()
+@agent_app.command(help="运行 BootAgent 四角色流水线分析存储的运行")
 def analyze(
     run_id: Annotated[str, typer.Argument(help="Run UUID to analyze")],
     data_root: DataRoot = Path("var/runs"),  # noqa: B008
@@ -693,18 +693,46 @@ def benchmark() -> None:
 # -- Phase 9 evidence dashboard -----------------------------------------
 
 
-@app.command()
+@app.command(help="启动本地 HTTP 服务器并在浏览器中打开交互式证据仪表板")
 def dashboard() -> None:
-    """Open the Phase 1-9 evidence dashboard in the default browser."""
+    """Start a local HTTP server and open the evidence dashboard in the browser."""
+    import http.server
+    import os as _os
+    import socketserver
+    import threading
     import webbrowser
     from pathlib import Path
 
-    dashboard_html = Path("dashboard/dist/index.html")
-    if not dashboard_html.is_file():
+    dashboard_dir = Path("dashboard/dist").resolve()
+    if not (dashboard_dir / "index.html").is_file():
         typer.echo(
             "Dashboard not built. Run: cd dashboard && npm install && npm run build"
         )
         raise typer.Exit(code=1)
-    url = dashboard_html.resolve().as_uri()
-    typer.echo(f"Opening {url}")
-    webbrowser.open(url)
+
+    class DashboardHandler(http.server.SimpleHTTPRequestHandler):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, directory=str(dashboard_dir), **kwargs)
+
+    # Try ports 8765-8769
+    for port in range(8765, 8770):
+        try:
+            httpd = socketserver.TCPServer(("", port), DashboardHandler)
+            break
+        except OSError:
+            continue
+    else:
+        typer.echo("Error: Could not find a free port for the dashboard server.")
+        raise typer.Exit(code=1)
+
+    url = f"http://localhost:{port}"
+    typer.echo(f"Dashboard: {url}")
+    typer.echo("Press Ctrl+C to stop.")
+    threading.Thread(target=lambda: (
+        __import__("time").sleep(0.5),
+        webbrowser.open(url),
+    )).start()
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        httpd.server_close()
