@@ -311,7 +311,7 @@ def cmd_analyze(
                             "ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=15",
                             target, dot_cmd,
                         ],
-                        capture_output=True, text=True, timeout=30, check=False,
+                        capture_output=True, text=True, timeout=30, check=False, encoding="utf-8", errors="replace",
                     )
                     if result.returncode == 0 and "digraph" in (result.stdout or ""):
                         dot_text = result.stdout
