@@ -432,6 +432,7 @@ def cmd_optimize_plan(
         build_mask_strongswan,
         build_parallelize_kylin,
         build_socket_nm_wait,
+        phase6_kaiming_stagger,
     )
     from kylinbootlab.optimization.planner import rank_candidates
     from kylinbootlab.store import RunStore
@@ -455,10 +456,12 @@ def cmd_optimize_plan(
     # Map bottleneck nodes to known candidates
     known_candidates = {
         "biometric-authentication.service": build_mask_biometric,
+        "strongswan-starter.service": build_mask_strongswan,
         "strongswan.service": build_mask_strongswan,
         "NetworkManager-wait-online.service": build_socket_nm_wait,
         "kylin-display-manager.service": build_parallelize_kylin,
         "lightdm.service": build_exec_delay_lightdm,
+        "org.kylin.kaiming.service": phase6_kaiming_stagger,
     }
 
     candidates = []
