@@ -425,7 +425,6 @@ def cmd_optimize_plan(
     import json
     from uuid import UUID
 
-    from kylinbootlab.analysis.graph import Bottleneck
     from kylinbootlab.optimization.plan import (
         build_exec_delay_lightdm,
         build_mask_biometric,
@@ -451,7 +450,7 @@ def cmd_optimize_plan(
         raise typer.Exit(code=1)
 
     raw = json.loads(br_path.read_text(encoding="utf-8"))
-    bottlenecks = [Bottleneck.model_validate(b) for b in raw]
+    bottlenecks = {b["node"]: b for b in raw}
 
     # Map bottleneck nodes to known candidates
     known_candidates = {
@@ -464,16 +463,22 @@ def cmd_optimize_plan(
         "org.kylin.kaiming.service": phase6_kaiming_stagger,
     }
 
+    # Build all candidates, enriching with bottleneck data where available.
+    # Dedup by factory — some services share the same candidate (e.g. both
+    # strongswan-starter.service and strongswan.service map to mask-strongswan).
+    seen_plans: set[str] = set()
     candidates = []
-    for b in bottlenecks:
-        factory = known_candidates.get(b.node)
-        if factory is not None:
-            plan = factory()
-            # Override evidence with actual Phase 4 data
-            plan.evidence.blame_ns = b.blame_ns
-            plan.evidence.slack_ns = b.slack_ns
-            plan.evidence.on_critical_path = b.on_critical_path
-            candidates.append(plan)
+    for node_name, factory in known_candidates.items():
+        plan = factory()
+        if plan.plan_id in seen_plans:
+            continue
+        seen_plans.add(plan.plan_id)
+        b = bottlenecks.get(node_name)
+        if b is not None:
+            plan.evidence.blame_ns = b["blame_ns"]
+            plan.evidence.slack_ns = b["slack_ns"]
+            plan.evidence.on_critical_path = b["on_critical_path"]
+        candidates.append(plan)
 
     if not candidates:
         typer.echo("No matching optimization candidates found for the top bottlenecks.")
