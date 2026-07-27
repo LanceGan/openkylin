@@ -175,8 +175,8 @@ def _flatten_objects(data: dict[str, Any]) -> None:
                     elif "feature" in item and "impact" in item:
                         # {feature: "X", impact: "Y"} → "X: Y"
                         value[i] = f"{item['feature']}: {item['impact']}"
-                    elif "node" in item and key.endswith("_bottlenecks"):
-                        # missed_bottlenecks expects strings, not objects
+                    elif "node" in item and key.endswith(("_bottlenecks", "_chain")):
+                        # missed_bottlenecks / evidence_chain expect strings, not objects
                         value[i] = item["node"]
                     else:
                         _flatten_objects(item)
