@@ -175,8 +175,8 @@ def _flatten_objects(data: dict[str, Any]) -> None:
                     elif "feature" in item and "impact" in item:
                         # {feature: "X", impact: "Y"} → "X: Y"
                         value[i] = f"{item['feature']}: {item['impact']}"
-                    elif "node" in item:
-                        # {node: "apt-daily.service", blame_ns: ..., ...} → "apt-daily.service"
+                    elif "node" in item and key.endswith("_bottlenecks"):
+                        # missed_bottlenecks expects strings, not objects
                         value[i] = item["node"]
                     else:
                         _flatten_objects(item)
