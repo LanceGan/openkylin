@@ -96,7 +96,7 @@ winget install OpenJS.NodeJS
 
 ```powershell
 git clone <仓库地址>
-cd <项目目录>
+cd <项目目录>/codes
 uv sync --all-groups --python 3.12
 
 # 可选：构建仪表板
@@ -106,6 +106,7 @@ cd dashboard && npm install && npm run build && cd ..
 ### 质量门禁
 
 ```powershell
+cd codes
 uv run ruff check . && uv run mypy src tests && uv run pytest -q
 cargo fmt --all -- --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace
 ```
@@ -114,14 +115,14 @@ cargo fmt --all -- --check && cargo clippy --workspace --all-targets -- -D warni
 
 ### 目标机部署
 
-Rust 探针需在目标 Linux 环境中编译（`x86_64-unknown-linux-gnu` 目标）。部署脚本位于 `scripts/target/`：
+Rust 探针需在目标 Linux 环境中编译（`x86_64-unknown-linux-gnu` 目标）。部署脚本位于 `codes/scripts/target/`：
 
 ```bash
 # 基础探针部署
-sudo bash scripts/target/install_bootprobe.sh <binary> <username>
+sudo bash codes/scripts/target/install_bootprobe.sh <binary> <username>
 
 # Observer 部署（含自动登录注入 + 桌面可用性探测）
-sudo bash scripts/target/install_observer.sh <binary> <username> <password>
+sudo bash codes/scripts/target/install_observer.sh <binary> <username> <password>
 
 # 对于 Ubuntu/Fedora（使用 GDM），安装后修改配置：
 sudo sed -i 's/lightdm.service/gdm.service/' /etc/kylinbootlab/observe.toml
@@ -167,7 +168,10 @@ uv run kbl optimize run <plan-id> --target kbl@<target-ip> --vmx-path "<vmx路�
 
 ## 项目结构
 
+> 项目代码位于 `codes/` 目录下。
+
 ```
+codes/
 ├── src/kylinbootlab/          # Python 控制端
 │   ├── cli.py                 # CLI 入口（11 子命令）
 │   ├── contracts.py           # Pydantic 数据契约（跨语言一致性）

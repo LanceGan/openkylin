@@ -1,0 +1,17 @@
+[Unit]
+Description=KylinBootLab boot readiness observer (Phase 3)
+# Toggled by the controller WITHOUT sudo: the marker lives in the
+# kbl-group-writable state dir.  Marker absent = bare boot, zero overhead.
+ConditionPathExists=/var/lib/kylinbootlab/observe/enabled
+After=systemd-journald.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/kbl-bootprobe observe
+# A restart would pollute the readiness timeline (spec §8): never restart.
+# A late start is harmless: journalctl -b 0 -f replays from boot start.
+Restart=no
+Nice=10
+
+[Install]
+WantedBy=graphical.target
