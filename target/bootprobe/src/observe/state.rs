@@ -12,14 +12,6 @@ pub const GREETER_TIMEOUT_NS: u64 = 90_000_000_000;
 pub const SESSION_TIMEOUT_NS: u64 = 30_000_000_000;
 pub const USABLE_TIMEOUT_NS: u64 = 300_000_000_000;
 
-/// Units that must be active before login injection (spec §4.2).
-/// ``dbus.service`` and ``NetworkManager.service`` are universal; the display
-/// manager service is taken from ``ObserveConfig.display_manager_service``
-/// (default ``lightdm.service``; set to ``gdm.service`` on Ubuntu/Fedora).
-/// MUST stay aligned with ``_derive_required_units`` in
-/// ``src/kylinbootlab/readiness.py`` — the Python side parses the DM service
-/// name from the ``observer_started`` event detail emitted by the driver.
-
 /// Degradation marker the usable-probe embeds in event details when AT-SPI
 /// is unreachable (spec §8); the usable decision below recognises it.
 pub const ATSPI_UNAVAILABLE: &str = "atspi_unavailable";

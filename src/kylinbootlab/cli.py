@@ -708,6 +708,7 @@ def dashboard() -> None:
     import os as _os
     import socketserver
     import threading
+    import time as _time
     import webbrowser
     from pathlib import Path
 
@@ -737,7 +738,7 @@ def dashboard() -> None:
     typer.echo(f"Dashboard: {url}")
     typer.echo("Press Ctrl+C to stop.")
     threading.Thread(target=lambda: (
-        __import__("time").sleep(0.5),
+        _time.sleep(0.5),
         webbrowser.open(url),
     )).start()
     try:

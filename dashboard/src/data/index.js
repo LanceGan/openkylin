@@ -40,7 +40,7 @@ const fedoraDracutTrim = {
     a_median_ns: 9654000000, b_median_ns: 7560500000,
     median_improvement_ns: 2093500000, median_improvement_pct: 18.99,
     ci_lower_95_ns: -8179500000, ci_upper_95_ns: -37500000,
-    p95_a_ns: 9654000000, p95_b_ns: 9654000000,
+    p95_a_ns: 9654000000, p95_b_ns: 7560500000,
     paired_diffs_ns: []
   },
   functional_passed: true, failed_gates: [], recommendation: ""

@@ -157,14 +157,6 @@ class ABBARunner:
                         executor.apply_with_retry(plan)
                     state_machine.switch_to(desired_profile)
 
-                # Switch profile if needed (no-op if already correct)
-                if desired_profile != state_machine.current:
-                    if desired_profile == "A":
-                        executor.rollback(plan)
-                    else:
-                        executor.apply_with_retry(plan)
-                    state_machine.switch_to(desired_profile)
-
                 # Create experiment queue with one record
                 exp_id = f"{plan.plan_id}-{boot_index:03d}"
                 eq = ExperimentQueue(queue_path)
