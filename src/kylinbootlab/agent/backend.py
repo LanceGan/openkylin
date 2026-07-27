@@ -61,7 +61,7 @@ class OllamaBackend:
             r = requests.post(
                 f"{self.base_url}/api/chat",
                 json=payload,
-                timeout=120,
+                timeout=300,
             )
             r.raise_for_status()
         except requests.RequestException as exc:
