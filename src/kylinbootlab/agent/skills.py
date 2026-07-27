@@ -175,6 +175,9 @@ def _flatten_objects(data: dict[str, Any]) -> None:
                     elif "feature" in item and "impact" in item:
                         # {feature: "X", impact: "Y"} → "X: Y"
                         value[i] = f"{item['feature']}: {item['impact']}"
+                    elif "node" in item:
+                        # {node: "apt-daily.service", blame_ns: ..., ...} → "apt-daily.service"
+                        value[i] = item["node"]
                     else:
                         _flatten_objects(item)
 
