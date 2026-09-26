@@ -107,11 +107,11 @@ cd dashboard && npm install && npm run build && cd ..
 
 ```powershell
 cd src
-uv run ruff check . && uv run mypy src tests && uv run pytest -q
+uv run ruff check kylinbootlab ../tests && uv run mypy kylinbootlab ../tests && uv run pytest -q
 cargo fmt --all -- --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace
 ```
 
-测试套件：Python 313 + Rust 54 = **367 tests**
+测试套件：Python 317 + Rust 54 = **371 tests**
 
 ### 目标机部署
 
@@ -165,6 +165,17 @@ uv run kbl optimize run <plan-id> --target kbl@<target-ip> --vmx-path "<vmx路�
 #              mask-biometric, socket-nm-wait, parallelize-kylin,
 #              phase6-kaiming-stagger, phase6-mitigations-off, phase6-initramfs-trim
 ```
+
+### 一键复现（demo 样例）
+
+仓库内附带一份真实 openKylin 冷启动的样例采集数据（`demo/sample-run/`），无需 VMware 虚拟机即可复现完整分析闭环：
+
+```bash
+# 在仓库根目录执行
+bash demo/run_demo.sh
+```
+
+脚本依次执行 `ingest → report → analyze → optimize plan`，产出基线 HTML 报告（`var/demo-runs/<run_id>/reports/baseline.html`）、因果图与瓶颈报告。
 
 ## 项目结构
 
@@ -258,7 +269,7 @@ src/
 | 电源控制 | VMware vmrun / Wake-on-LAN + SSH | 虚拟机/物理机冷启动自动化 |
 | LLM 后端 | Ollama + Qwen2.5-Coder-7B-Instruct (Q4_K_M, CPU) | 本地推理、四角色诊断 |
 | 仪表板 | React 19 + Recharts 2 + Tailwind CSS 4 + Vite 8 | 交互式证据浏览器 |
-| 测试 | pytest 8 + mypy strict + ruff / cargo test + clippy | 367 测试、零 lint 告警 |
+| 测试 | pytest 8 + mypy strict + ruff / cargo test + clippy | 371 测试、零 lint 告警 |
 
 ## 设计亮点
 
