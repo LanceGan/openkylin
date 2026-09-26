@@ -30,7 +30,9 @@ def test_rust_readiness_fixture_matches_checked_in_fixture() -> None:
         capture_output=True,
         text=True,
     )
-    expected = Path("tests/fixtures/readiness-events-v1.jsonl").read_text(encoding="utf-8")
+    expected = (
+        Path(__file__).parent / "fixtures" / "readiness-events-v1.jsonl"
+    ).read_text(encoding="utf-8")
     assert completed.stdout == expected  # byte-identical JSONL, field order included
 
     metrics = derive_metrics(parse_events(completed.stdout))

@@ -90,6 +90,43 @@ class TestRankBottlenecks:
         assert "cp_node" in on_cp
         assert "off_cp" not in on_cp
 
+    def test_off_cp_high_blame_outranks_on_cp_low_blame(self) -> None:
+        """Soft-boost criticality (2.0/1.0) keeps an off-CP node ranked by blame.
+
+        Reverting criticality to 1.0/0.0 zeroes ``slacky`` (score 0), which
+        drops it below ``src`` and fails this test.
+        """
+        g = _graph_from_triples([
+            ("src", "cp_node", 2000),
+            ("src", "slacky", 1000),
+            ("cp_node", "usable", 0),
+            ("slacky", "usable", 0),
+        ])
+        g.nodes["src"].blame_ns = 100
+        g.add_node(CausalNode(name="usable", blame_ns=0, layer="readiness"))
+        results = rank_bottlenecks(g, top_k=10)
+        by_node = {r.node: r for r in results}
+        # slacky is off CP (slack=1000ns) but carries higher blame than src
+        # (on CP). Soft boost keeps its score non-zero and above src.
+        assert by_node["slacky"].score > 0
+        assert by_node["slacky"].score > by_node["src"].score
+
+    def test_multirun_criticality_interpolates_1_to_2(self) -> None:
+        """Multi-run criticality = 1.0 + on-CP fraction; never-on-CP floors at 1.0."""
+        g = _graph_from_triples([
+            ("src", "cp_node", 1000),
+            ("src", "slacky", 1000),
+            ("cp_node", "usable", 0),
+            ("slacky", "usable", 0),
+        ])
+        g.nodes["src"].blame_ns = 0
+        g.add_node(CausalNode(name="usable", blame_ns=0, layer="readiness"))
+        # Over 2 runs, cp_node is on CP both times; slacky never.
+        on_cp = ["src", "cp_node", "src", "cp_node"]
+        results = rank_bottlenecks(g, total_runs=2, on_cp_nodes=on_cp, top_k=10)
+        by_node = {r.node: r for r in results}
+        assert by_node["slacky"].score > 0  # floor 1.0, not 0.0
+
     def test_empty_graph_returns_empty_list(self) -> None:
         g = CausalGraph()
         results = rank_bottlenecks(g)

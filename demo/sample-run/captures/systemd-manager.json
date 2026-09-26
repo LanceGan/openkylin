@@ -1,0 +1,14 @@
+{
+  "command": [
+    "systemctl",
+    "--no-pager",
+    "show",
+    "--property=KernelTimestampMonotonic",
+    "--property=InitRDTimestampMonotonic",
+    "--property=UserspaceTimestampMonotonic",
+    "--property=FinishTimestampMonotonic"
+  ],
+  "exit_code": 0,
+  "stdout": "KernelTimestampMonotonic=0\nInitRDTimestampMonotonic=0\nUserspaceTimestampMonotonic=6777958\nFinishTimestampMonotonic=13174428\n",
+  "stderr": ""
+}

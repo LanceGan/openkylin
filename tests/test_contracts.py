@@ -1,6 +1,4 @@
 import json
-import subprocess
-import sys
 from importlib import resources
 from pathlib import Path
 from typing import Any
@@ -11,7 +9,7 @@ from pydantic import ValidationError
 
 from kylinbootlab.contracts import ProbeManifest
 
-FIXTURE = Path("tests/fixtures/probe-manifest-v1.json")
+FIXTURE = Path(__file__).parent / "fixtures" / "probe-manifest-v1.json"
 
 
 def fixture_data() -> Any:

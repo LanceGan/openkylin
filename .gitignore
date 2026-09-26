@@ -1,38 +1,37 @@
 # 编译产物
-codes/src/**/__pycache__/
+src/kylinbootlab/**/__pycache__/
 *.pyc
 *.pyo
-codes/.mypy_cache/
-codes/.pytest_cache/
-codes/.ruff_cache/
-codes/target/debug/
-codes/target/release/
-codes/target/x86_64-unknown-linux-gnu/
-codes/target/.rustc_info.json
+src/.mypy_cache/
+src/.pytest_cache/
+src/.ruff_cache/
+src/target/debug/
+src/target/release/
+src/target/x86_64-unknown-linux-gnu/
+src/target/.rustc_info.json
 
 # 依赖
 node_modules/
-codes/dashboard/node_modules/
-codes/dashboard/package-lock.json
+src/dashboard/node_modules/
+src/dashboard/package-lock.json
 
 # 构建产物
 kbl-bootprobe-built
 kbl-bootprobe-v2
-codes/dashboard/dist/
+src/dashboard/dist/
 
 # IDE 和编辑工具
 .vscode/
 .idea/
 
 # 实验数据（本地保留，不提交）
-codes/var/
+src/var/
 
-# 项目说明书（本地保留，不提交）
+# 工作文件（本地保留，不提交）
 *.docx
 *.docx.pre-rebuild.bak
 演示视频脚本.md
 演示PPT内容.md
-docs/
 
 # 临时文件
 *.tmp

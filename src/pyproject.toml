@@ -6,7 +6,6 @@ build-backend = "hatchling.build"
 name = "kylinbootlab"
 version = "0.1.0"
 description = "Reproducible Linux desktop boot analysis and optimization"
-readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
   "jinja2>=3.1.5,<4",
@@ -29,11 +28,11 @@ dev = [
 kbl = "kylinbootlab.cli:app"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/kylinbootlab"]
+packages = ["kylinbootlab"]
 
 [tool.pytest.ini_options]
 addopts = "-q"
-testpaths = ["tests"]
+testpaths = ["../tests"]
 
 [tool.ruff]
 line-length = 100

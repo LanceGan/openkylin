@@ -9,7 +9,7 @@ from kylinbootlab.readiness import (
     parse_events,
 )
 
-FIXTURE = Path("tests/fixtures/readiness-events-v1.jsonl")
+FIXTURE = Path(__file__).parent / "fixtures" / "readiness-events-v1.jsonl"
 
 
 def fixture_events() -> list[ReadinessEvent]:

@@ -26,7 +26,11 @@ def rank_bottlenecks(
 
     Score formula (spec §5.3):
 
-        score = blame_ns * (1.0 / (1.0 + slack_ns / 1e9)) * (count_on_cp / total_runs)
+        score = blame_ns * (1.0 / (1.0 + slack_ns / 1e9)) * criticality
+
+    where ``criticality`` soft-boosts nodes on the critical path: ``2.0``
+    on the critical path, ``1.0`` off it.  With ``total_runs > 1`` it
+    becomes ``1.0 + (runs on the critical path) / total_runs``.
 
     Sort descending by score, then by blame_ns descending, then stable
     by node-insertion order.
@@ -46,9 +50,9 @@ def rank_bottlenecks(
             continue
         s = slack(graph, name, sink=sink)
         slack_penalty = 1.0 / (1.0 + s / 1_000_000_000)
-        criticality = 1.0 if name in cp_nodes else 0.0
+        criticality = 2.0 if name in cp_nodes else 1.0
         if total_runs > 1:
-            criticality = float(cp_nodes.count(name)) / total_runs
+            criticality = 1.0 + float(cp_nodes.count(name)) / total_runs
         score = node.blame_ns * slack_penalty * criticality
         on_cp = name in cp_nodes
         scored.append((name, score, node.blame_ns, on_cp))

@@ -31,7 +31,9 @@ def test_report_writes_metrics_and_html_deterministically(tmp_path: Path) -> Non
     assert second.html.read_bytes() == first_html
 
 
-FIXTURE_EVENTS = Path("tests/fixtures/readiness-events-v1.jsonl").read_text(encoding="utf-8")
+FIXTURE_EVENTS = (
+    Path(__file__).parent / "fixtures" / "readiness-events-v1.jsonl"
+).read_text(encoding="utf-8")
 
 
 def _readiness_capture(stdout: str) -> CaptureFixture:

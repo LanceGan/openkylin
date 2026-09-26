@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "run_id": "d4e46702-0a96-4c4e-94ad-f432ba78259f",
+  "boot_id": "bca8397d-2a2d-467d-95f6-b2f4512ef752",
+  "captured_at_utc": "2026-09-26T08:51:36.741197701Z",
+  "boottime_ns": 134120740758,
+  "host": {
+    "hostname": "kbl-target",
+    "kernel_release": "6.6.0-19-generic",
+    "os_id": "openkylin",
+    "os_version_id": "2.0",
+    "architecture": "x86_64"
+  },
+  "artifacts": [
+    {
+      "name": "systemd-time",
+      "relative_path": "captures/systemd-time.json",
+      "sha256": "20d748197ee62fe495308e70892d230702294a305393fd472dcefa143b79b88f",
+      "size_bytes": 247,
+      "command": [
+        "systemd-analyze",
+        "--no-pager",
+        "time"
+      ],
+      "exit_code": 0,
+      "required": true
+    },
+    {
+      "name": "systemd-blame",
+      "relative_path": "captures/systemd-blame.json",
+      "sha256": "fd5a6282d13cbca3811a2ee529a9a80ec433f48c928660330e539f1f7dfb2db2",
+      "size_bytes": 3236,
+      "command": [
+        "systemd-analyze",
+        "--no-pager",
+        "blame"
+      ],
+      "exit_code": 0,
+      "required": true
+    },
+    {
+      "name": "systemd-critical-chain",
+      "relative_path": "captures/systemd-critical-chain.json",
+      "sha256": "154717511795a03d05f341cf296943b06877e5d4c00722ffc47ca91e7dfa1389",
+      "size_bytes": 1270,
+      "command": [
+        "systemd-analyze",
+        "--no-pager",
+        "critical-chain"
+      ],
+      "exit_code": 0,
+      "required": false
+    },
+    {
+      "name": "systemd-manager",
+      "relative_path": "captures/systemd-manager.json",
+      "sha256": "379f43d8ac92633a9d58ef414fcf760cf11a87ee8e89cbb3c20e2467e1a21632",
+      "size_bytes": 422,
+      "command": [
+        "systemctl",
+        "--no-pager",
+        "show",
+        "--property=KernelTimestampMonotonic",
+        "--property=InitRDTimestampMonotonic",
+        "--property=UserspaceTimestampMonotonic",
+        "--property=FinishTimestampMonotonic"
+      ],
+      "exit_code": 0,
+      "required": false
+    },
+    {
+      "name": "journal-monotonic",
+      "relative_path": "captures/journal-monotonic.json",
+      "sha256": "4afbf9f951e520bb6563cde9edad4ef599de0352660ca030b203cd7990135173",
+      "size_bytes": 968976,
+      "command": [
+        "journalctl",
+        "--boot=0",
+        "--output=short-monotonic",
+        "--no-pager"
+      ],
+      "exit_code": 0,
+      "required": false
+    },
+    {
+      "name": "readiness-events",
+      "relative_path": "captures/readiness-events.json",
+      "sha256": "9071940d69a3b5500acbf5a28c77c7678ed20d4da2ab6c859dc632df46d7245d",
+      "size_bytes": 2085,
+      "command": [
+        "cat",
+        "/var/lib/kylinbootlab/observe/current.jsonl"
+      ],
+      "exit_code": 0,
+      "required": false
+    },
+    {
+      "name": "systemd-dot",
+      "relative_path": "captures/systemd-dot.json",
+      "sha256": "6d8ff80cac2d5d04b9a9ef2dbf23225640e51c0ef508b68c2d43440d3ff52df8",
+      "size_bytes": 120806,
+      "command": [
+        "systemd-analyze",
+        "--no-pager",
+        "dot",
+        "--order"
+      ],
+      "exit_code": 0,
+      "required": false
+    }
+  ]
+}

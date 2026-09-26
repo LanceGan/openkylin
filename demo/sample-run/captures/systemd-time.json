@@ -1,0 +1,10 @@
+{
+  "command": [
+    "systemd-analyze",
+    "--no-pager",
+    "time"
+  ],
+  "exit_code": 0,
+  "stdout": "Startup finished in 6.777s (kernel) + 6.396s (userspace) = 13.174s \ngraphical.target reached after 4.867s in userspace.\n",
+  "stderr": ""
+}

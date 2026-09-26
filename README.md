@@ -96,7 +96,7 @@ winget install OpenJS.NodeJS
 
 ```powershell
 git clone <仓库地址>
-cd <项目目录>/codes
+cd <项目目录>/src
 uv sync --all-groups --python 3.12
 
 # 可选：构建仪表板
@@ -106,7 +106,7 @@ cd dashboard && npm install && npm run build && cd ..
 ### 质量门禁
 
 ```powershell
-cd codes
+cd src
 uv run ruff check . && uv run mypy src tests && uv run pytest -q
 cargo fmt --all -- --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace
 ```
@@ -115,14 +115,14 @@ cargo fmt --all -- --check && cargo clippy --workspace --all-targets -- -D warni
 
 ### 目标机部署
 
-Rust 探针需在目标 Linux 环境中编译（`x86_64-unknown-linux-gnu` 目标）。部署脚本位于 `codes/scripts/target/`：
+Rust 探针需在目标 Linux 环境中编译（`x86_64-unknown-linux-gnu` 目标）。部署脚本位于 `src/scripts/target/`：
 
 ```bash
 # 基础探针部署
-sudo bash codes/scripts/target/install_bootprobe.sh <binary> <username>
+sudo bash src/scripts/target/install_bootprobe.sh <binary> <username>
 
 # Observer 部署（含自动登录注入 + 桌面可用性探测）
-sudo bash codes/scripts/target/install_observer.sh <binary> <username> <password>
+sudo bash src/scripts/target/install_observer.sh <binary> <username> <password>
 
 # 对于 Ubuntu/Fedora（使用 GDM），安装后修改配置：
 sudo sed -i 's/lightdm.service/gdm.service/' /etc/kylinbootlab/observe.toml
@@ -168,11 +168,11 @@ uv run kbl optimize run <plan-id> --target kbl@<target-ip> --vmx-path "<vmx路�
 
 ## 项目结构
 
-> 项目代码位于 `codes/` 目录下。
+> 项目代码位于 `src/` 目录下，Python 测试套件位于仓库根目录 `tests/`。
 
 ```
-codes/
-├── src/kylinbootlab/          # Python 控制端
+src/
+├── kylinbootlab/          # Python 控制端
 │   ├── cli.py                 # CLI 入口（11 子命令）
 │   ├── contracts.py           # Pydantic 数据契约（跨语言一致性）
 │   ├── store.py               # 不可变 RunStore（4 阶段 TOCTOU 安全导入）
@@ -242,11 +242,8 @@ codes/
 │   ├── kbl-dot-capture.sh     # DOT 图采集脚本
 │   ├── prepare_recovery.sh    # ostree 恢复基线
 │   └── verify_foundation.sh   # 基础安装验证
-├── tests/                     # Python 测试套件（313 tests）
 ├── dashboard/                 # React 证据仪表板（Vite + Recharts + Tailwind）
 ├── agent/skills/              # LLM 角色 TOML 技能定义（4 文件）
-├── docs/evidence/             # 实验证据
-│   └── cross-distro/          # 跨发行版基线 + ABBA 结果
 ├── pyproject.toml             # Python 项目配置
 ├── Cargo.toml                 # Rust workspace 配置
 └── .gitignore
